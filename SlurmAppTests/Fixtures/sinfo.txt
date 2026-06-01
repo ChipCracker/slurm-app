@@ -1,0 +1,7 @@
+/etc/bash.bashrc: line 3: bind: warning: line editing not enabled
+p0*|up|1|1/0|20/76/0/96
+p1|up|1|1/0|84/172/0/256
+p2|up|1|1/0|68/60/0/128
+p4|up|1|1/0|92/292/0/384
+p6|up|1|1/0|8/120/0/128
+all|up|5|5/0|272/720/0/992

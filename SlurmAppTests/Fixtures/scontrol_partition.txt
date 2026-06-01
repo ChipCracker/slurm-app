@@ -1,0 +1,13 @@
+/etc/bash.bashrc: line 3: bind: warning: line editing not enabled
+PartitionName=p2
+   AllowGroups=ALL AllowAccounts=ALL DenyQos=hans
+   AllocNodes=ALL Default=NO QoS=N/A
+   DefaultTime=NONE DisableRootJobs=NO ExclusiveUser=NO GraceTime=0 Hidden=NO
+   MaxNodes=UNLIMITED MaxTime=UNLIMITED MinNodes=0 LLN=NO MaxCPUsPerNode=UNLIMITED
+   Nodes=ml2
+   PriorityJobFactor=1 PriorityTier=1 RootOnly=NO ReqResv=NO OverSubscribe=NO
+   OverTimeLimit=NONE PreemptMode=REQUEUE
+   State=UP TotalCPUs=128 TotalNodes=1 SelectTypeParameters=NONE
+   JobDefaults=(null)
+   DefMemPerNode=UNLIMITED MaxMemPerNode=UNLIMITED
+

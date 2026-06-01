@@ -1,0 +1,701 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0156282C24C16314C5193732 /* SSHKeyLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA0CF584C20826604E3061B /* SSHKeyLoader.swift */; };
+		04BAC85AE12D218E1814BCD7 /* TerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3574A205341AA68ED3763515 /* TerminalLauncher.swift */; };
+		05537A8C2F6A0CCFAF00A259 /* GpuComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0AABBAD58D079640D1818CC /* GpuComponents.swift */; };
+		0C78B1DD70F65A98DEE5C8BC /* Shimmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A53C97E07F71536A24A2F7 /* Shimmer.swift */; };
+		0DF02FC308926D24FD10A079 /* SubmitJobView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E5E469CBF8922B2B25380B /* SubmitJobView.swift */; };
+		1CE38DA5A68B666E87A82DB1 /* PlatformExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C33F0A88015061E1ADE2DCA /* PlatformExtensions.swift */; };
+		1F109DE28F13D667C706B389 /* SlurmModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E65E65EDAF29D80348B2FF69 /* SlurmModels.swift */; };
+		23B42FEA33EA278A3F13BB73 /* sinfo.txt in Resources */ = {isa = PBXBuildFile; fileRef = 0E969AE0F596DBA91E9BE890 /* sinfo.txt */; };
+		247FBE9DA72559E3C27351D7 /* squeue.txt in Resources */ = {isa = PBXBuildFile; fileRef = 06E47AC18BC02560AFE6AA0E /* squeue.txt */; };
+		36BDEA2F85C81B618E2818EA /* PartitionSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFD8F775C46E7DB6D181C22C /* PartitionSheetView.swift */; };
+		3A01F49F28A78D8DD148D758 /* scontrol_job.txt in Resources */ = {isa = PBXBuildFile; fileRef = 0289D29EAEB6D36094500908 /* scontrol_job.txt */; };
+		3EC6E33948C47827AA7BEB2A /* JobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D27D8E61FCB5EA2C3CE8F6 /* JobsView.swift */; };
+		4247C918A59CF93F8F3213A0 /* PartitionDetailsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE524887682B6F23D8227DD /* PartitionDetailsCard.swift */; };
+		4C2F4927130FD96E5E3F6332 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 479B6FEF93D46A09D504213C /* AppState.swift */; };
+		4DA9F6B7334B944B186DC0AB /* SlurmParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC05235D97AC4236D3E23E15 /* SlurmParserTests.swift */; };
+		5261D7F882B957556078B80F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 513A4EB5A7962023327A4191 /* Assets.xcassets */; };
+		59F7C0D74A47FBC8F5FA2B92 /* JobDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A78988BC7B066680B7189C85 /* JobDetailView.swift */; };
+		5C657E55A4FB1D7A280ECB88 /* CopyableText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0402E596C060AB8DDC7F36E3 /* CopyableText.swift */; };
+		5C87C516DE5BE0DC3868ED74 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E1476501CA9B7783E8B302 /* SettingsView.swift */; };
+		62DD26C839B3EB4911A9DCD2 /* GpuHoursSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C89B22B083D0558AD07BD15D /* GpuHoursSheetView.swift */; };
+		7B0D440CC88B440C009C9EAC /* SlurmApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2BB20BCA3CEE443C032939 /* SlurmApp.swift */; };
+		7C7D88BCC1381A201D5D531E /* BookmarksStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02598092AE6B989F00CB5C80 /* BookmarksStore.swift */; };
+		7DDE1DEB5C0FCDAE093D4B4D /* HelpOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F75B057CEC6C7FCDBF6096 /* HelpOverlayView.swift */; };
+		831F39CAE9BE6081FC0564DB /* sinfo_gres.txt in Resources */ = {isa = PBXBuildFile; fileRef = 0D0D208C24D92672632AB78E /* sinfo_gres.txt */; };
+		8DD8C7A459EAA65C52718994 /* GlassModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070121E4A1964FD6B7250A8 /* GlassModal.swift */; };
+		902DA43E6CA1AC14CAAD5D2F /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1C661C0E5CE3169365AB1 /* MainTabView.swift */; };
+		94A088F08D6FE2CBF399CAB8 /* scontrol_partition.txt in Resources */ = {isa = PBXBuildFile; fileRef = BDFCF123293635C496E75BDF /* scontrol_partition.txt */; };
+		9E1DB645653D057DC20E5DAE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29EB966D7A1276D0A26C8A45 /* Theme.swift */; };
+		9F95DDE08A4DE101CF6F7015 /* SSHClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0E09345FBAB5547D4BC59C /* SSHClient.swift */; };
+		A727E07574C634ACD88CD898 /* SlurmService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 315763A8A738FF81A9A4ED8E /* SlurmService.swift */; };
+		A9B68E37D2118B2CFC2007A3 /* Shout in Frameworks */ = {isa = PBXBuildFile; productRef = 95C338561B86961D553AD5C1 /* Shout */; };
+		AA8A3F3C79248A160A3CBCFF /* ConnectionSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11288CD172B20E4A5808F15F /* ConnectionSetupView.swift */; };
+		AB72812E76C19B189FED798E /* Credentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E2959B3C7F172E3B6E5045 /* Credentials.swift */; };
+		AF076C7C050DD780AD69D29C /* SlurmParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DF97191D1DEF8C8FF9BF40B /* SlurmParser.swift */; };
+		B05DE126716F4AE8711608B4 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDCCBCAAFE3D297D205F68F6 /* KeychainStore.swift */; };
+		CEEFD2F06FBEF7CE2CA38DAB /* SSHIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9D93584AA1A872D10C2AC9 /* SSHIntegrationTests.swift */; };
+		D1ABEE9F601D8D7822FB4FF6 /* ReadOnlyGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDFFCCB20DDF14B4BE3F004B /* ReadOnlyGuardTests.swift */; };
+		D6CD7E22BC33B52427C6A5EC /* sinfo_partition_gres.txt in Resources */ = {isa = PBXBuildFile; fileRef = 91AF5E8228207E165A13C94E /* sinfo_partition_gres.txt */; };
+		D79B06E1E0E2151487D95377 /* BatchActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C7AE1DCC53EC7AE1EEF3E2 /* BatchActions.swift */; };
+		D9814140A6FB7E271C4B729F /* KeyboardShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACEAF9C5EE5B97ECE2F7451F /* KeyboardShortcuts.swift */; };
+		F8821AC083D9E12575B6E972 /* BookmarksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E1E655CC87985ABD907659 /* BookmarksView.swift */; };
+		FB8C5FA945576061C3825E87 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3022A5D1A8A21A70C4F87B37 /* RootView.swift */; };
+		FF9816C725D3EB4B95A261FC /* InteractiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A70FC80C8BA8A7807DD40E8 /* InteractiveSessionView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		47BE365F00DEE20D8727125B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9663FE5FFB627C3E793D7A70 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E57EECC9FA459C2101DE4C90;
+			remoteInfo = SlurmApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		02598092AE6B989F00CB5C80 /* BookmarksStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarksStore.swift; sourceTree = "<group>"; };
+		0289D29EAEB6D36094500908 /* scontrol_job.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = scontrol_job.txt; sourceTree = "<group>"; };
+		0402E596C060AB8DDC7F36E3 /* CopyableText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyableText.swift; sourceTree = "<group>"; };
+		06E47AC18BC02560AFE6AA0E /* squeue.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = squeue.txt; sourceTree = "<group>"; };
+		0D0D208C24D92672632AB78E /* sinfo_gres.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = sinfo_gres.txt; sourceTree = "<group>"; };
+		0E969AE0F596DBA91E9BE890 /* sinfo.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = sinfo.txt; sourceTree = "<group>"; };
+		11288CD172B20E4A5808F15F /* ConnectionSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSetupView.swift; sourceTree = "<group>"; };
+		12C29381737B77AFDE8DD5DB /* SlurmApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SlurmApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		27C7AE1DCC53EC7AE1EEF3E2 /* BatchActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchActions.swift; sourceTree = "<group>"; };
+		29EB966D7A1276D0A26C8A45 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		3022A5D1A8A21A70C4F87B37 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		3070121E4A1964FD6B7250A8 /* GlassModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassModal.swift; sourceTree = "<group>"; };
+		30A53C97E07F71536A24A2F7 /* Shimmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shimmer.swift; sourceTree = "<group>"; };
+		315763A8A738FF81A9A4ED8E /* SlurmService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlurmService.swift; sourceTree = "<group>"; };
+		3574A205341AA68ED3763515 /* TerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalLauncher.swift; sourceTree = "<group>"; };
+		3A9D93584AA1A872D10C2AC9 /* SSHIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHIntegrationTests.swift; sourceTree = "<group>"; };
+		479B6FEF93D46A09D504213C /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		4A379024A5D5469304CCC140 /* SlurmAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SlurmAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A70FC80C8BA8A7807DD40E8 /* InteractiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveSessionView.swift; sourceTree = "<group>"; };
+		513A4EB5A7962023327A4191 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8DF97191D1DEF8C8FF9BF40B /* SlurmParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlurmParser.swift; sourceTree = "<group>"; };
+		91AF5E8228207E165A13C94E /* sinfo_partition_gres.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = sinfo_partition_gres.txt; sourceTree = "<group>"; };
+		9C33F0A88015061E1ADE2DCA /* PlatformExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformExtensions.swift; sourceTree = "<group>"; };
+		A1A1C661C0E5CE3169365AB1 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		A78988BC7B066680B7189C85 /* JobDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobDetailView.swift; sourceTree = "<group>"; };
+		AC2BB20BCA3CEE443C032939 /* SlurmApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlurmApp.swift; sourceTree = "<group>"; };
+		ACEAF9C5EE5B97ECE2F7451F /* KeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcuts.swift; sourceTree = "<group>"; };
+		ADA0CF584C20826604E3061B /* SSHKeyLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyLoader.swift; sourceTree = "<group>"; };
+		B3E1476501CA9B7783E8B302 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		BDE524887682B6F23D8227DD /* PartitionDetailsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartitionDetailsCard.swift; sourceTree = "<group>"; };
+		BDFCF123293635C496E75BDF /* scontrol_partition.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = scontrol_partition.txt; sourceTree = "<group>"; };
+		C0E1E655CC87985ABD907659 /* BookmarksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarksView.swift; sourceTree = "<group>"; };
+		C2D27D8E61FCB5EA2C3CE8F6 /* JobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsView.swift; sourceTree = "<group>"; };
+		C89B22B083D0558AD07BD15D /* GpuHoursSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpuHoursSheetView.swift; sourceTree = "<group>"; };
+		C8E2959B3C7F172E3B6E5045 /* Credentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Credentials.swift; sourceTree = "<group>"; };
+		CC05235D97AC4236D3E23E15 /* SlurmParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlurmParserTests.swift; sourceTree = "<group>"; };
+		CFD8F775C46E7DB6D181C22C /* PartitionSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartitionSheetView.swift; sourceTree = "<group>"; };
+		D0AABBAD58D079640D1818CC /* GpuComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpuComponents.swift; sourceTree = "<group>"; };
+		D1F75B057CEC6C7FCDBF6096 /* HelpOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpOverlayView.swift; sourceTree = "<group>"; };
+		E4E5E469CBF8922B2B25380B /* SubmitJobView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubmitJobView.swift; sourceTree = "<group>"; };
+		E65E65EDAF29D80348B2FF69 /* SlurmModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlurmModels.swift; sourceTree = "<group>"; };
+		EAAEF7A8DA55A450256F0E70 /* Shout */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Shout; path = Vendor/Shout; sourceTree = SOURCE_ROOT; };
+		EC0E09345FBAB5547D4BC59C /* SSHClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHClient.swift; sourceTree = "<group>"; };
+		EDFFCCB20DDF14B4BE3F004B /* ReadOnlyGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadOnlyGuardTests.swift; sourceTree = "<group>"; };
+		FDCCBCAAFE3D297D205F68F6 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		97050A157E96BC3AECC703AE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A9B68E37D2118B2CFC2007A3 /* Shout in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0F3E3C063FA3D3F667C6FA7E /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				02598092AE6B989F00CB5C80 /* BookmarksStore.swift */,
+				ACEAF9C5EE5B97ECE2F7451F /* KeyboardShortcuts.swift */,
+				FDCCBCAAFE3D297D205F68F6 /* KeychainStore.swift */,
+				8DF97191D1DEF8C8FF9BF40B /* SlurmParser.swift */,
+				315763A8A738FF81A9A4ED8E /* SlurmService.swift */,
+				EC0E09345FBAB5547D4BC59C /* SSHClient.swift */,
+				ADA0CF584C20826604E3061B /* SSHKeyLoader.swift */,
+				3574A205341AA68ED3763515 /* TerminalLauncher.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		11ED05E3179E9FDED6F8C660 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				9C33F0A88015061E1ADE2DCA /* PlatformExtensions.swift */,
+				29EB966D7A1276D0A26C8A45 /* Theme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		2B63AE6AF1A3BF83EB1192F7 = {
+			isa = PBXGroup;
+			children = (
+				32DD32B265E1B71AFD84963A /* Packages */,
+				7457F151C5423831541DB45F /* SlurmApp */,
+				9A6344E639D0CF09AE5499DE /* SlurmAppTests */,
+				9A4AF679DF6A77968ABF6E85 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		32DD32B265E1B71AFD84963A /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				EAAEF7A8DA55A450256F0E70 /* Shout */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		369A74282FECA5A49AB493D1 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				479B6FEF93D46A09D504213C /* AppState.swift */,
+				AC2BB20BCA3CEE443C032939 /* SlurmApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		528B35CAEC29ECCBCC3912A3 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				C8E2959B3C7F172E3B6E5045 /* Credentials.swift */,
+				E65E65EDAF29D80348B2FF69 /* SlurmModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		5DE41A5A46F472552B50C0C3 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				0289D29EAEB6D36094500908 /* scontrol_job.txt */,
+				BDFCF123293635C496E75BDF /* scontrol_partition.txt */,
+				0D0D208C24D92672632AB78E /* sinfo_gres.txt */,
+				91AF5E8228207E165A13C94E /* sinfo_partition_gres.txt */,
+				0E969AE0F596DBA91E9BE890 /* sinfo.txt */,
+				06E47AC18BC02560AFE6AA0E /* squeue.txt */,
+			);
+			path = Fixtures;
+			sourceTree = "<group>";
+		};
+		7457F151C5423831541DB45F /* SlurmApp */ = {
+			isa = PBXGroup;
+			children = (
+				369A74282FECA5A49AB493D1 /* App */,
+				528B35CAEC29ECCBCC3912A3 /* Models */,
+				F0291B4468513814C474BCF7 /* Resources */,
+				0F3E3C063FA3D3F667C6FA7E /* Services */,
+				11ED05E3179E9FDED6F8C660 /* Theme */,
+				F478FD0D8AF220C4114C630E /* Views */,
+			);
+			path = SlurmApp;
+			sourceTree = "<group>";
+		};
+		9A4AF679DF6A77968ABF6E85 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				12C29381737B77AFDE8DD5DB /* SlurmApp.app */,
+				4A379024A5D5469304CCC140 /* SlurmAppTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9A6344E639D0CF09AE5499DE /* SlurmAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				EDFFCCB20DDF14B4BE3F004B /* ReadOnlyGuardTests.swift */,
+				CC05235D97AC4236D3E23E15 /* SlurmParserTests.swift */,
+				3A9D93584AA1A872D10C2AC9 /* SSHIntegrationTests.swift */,
+				5DE41A5A46F472552B50C0C3 /* Fixtures */,
+			);
+			path = SlurmAppTests;
+			sourceTree = "<group>";
+		};
+		F0291B4468513814C474BCF7 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				513A4EB5A7962023327A4191 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		F478FD0D8AF220C4114C630E /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				27C7AE1DCC53EC7AE1EEF3E2 /* BatchActions.swift */,
+				C0E1E655CC87985ABD907659 /* BookmarksView.swift */,
+				11288CD172B20E4A5808F15F /* ConnectionSetupView.swift */,
+				0402E596C060AB8DDC7F36E3 /* CopyableText.swift */,
+				3070121E4A1964FD6B7250A8 /* GlassModal.swift */,
+				D0AABBAD58D079640D1818CC /* GpuComponents.swift */,
+				C89B22B083D0558AD07BD15D /* GpuHoursSheetView.swift */,
+				D1F75B057CEC6C7FCDBF6096 /* HelpOverlayView.swift */,
+				4A70FC80C8BA8A7807DD40E8 /* InteractiveSessionView.swift */,
+				A78988BC7B066680B7189C85 /* JobDetailView.swift */,
+				C2D27D8E61FCB5EA2C3CE8F6 /* JobsView.swift */,
+				A1A1C661C0E5CE3169365AB1 /* MainTabView.swift */,
+				BDE524887682B6F23D8227DD /* PartitionDetailsCard.swift */,
+				CFD8F775C46E7DB6D181C22C /* PartitionSheetView.swift */,
+				3022A5D1A8A21A70C4F87B37 /* RootView.swift */,
+				B3E1476501CA9B7783E8B302 /* SettingsView.swift */,
+				30A53C97E07F71536A24A2F7 /* Shimmer.swift */,
+				E4E5E469CBF8922B2B25380B /* SubmitJobView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E57EECC9FA459C2101DE4C90 /* SlurmApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ADA3A027F71812CB20E9984E /* Build configuration list for PBXNativeTarget "SlurmApp" */;
+			buildPhases = (
+				71C940898DE50BDE413D641B /* Sources */,
+				7435B0C9074DF632F0368628 /* Resources */,
+				97050A157E96BC3AECC703AE /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SlurmApp;
+			packageProductDependencies = (
+				95C338561B86961D553AD5C1 /* Shout */,
+			);
+			productName = SlurmApp;
+			productReference = 12C29381737B77AFDE8DD5DB /* SlurmApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E5ECB8321E1FED1F3E29670B /* SlurmAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2DDE5C88B40F44B5F768F152 /* Build configuration list for PBXNativeTarget "SlurmAppTests" */;
+			buildPhases = (
+				162E86FBB8099108C73EF668 /* Sources */,
+				0D2FAAE4CB04DE9FAD58D759 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				355A59816CA49C0782D821D8 /* PBXTargetDependency */,
+			);
+			name = SlurmAppTests;
+			packageProductDependencies = (
+			);
+			productName = SlurmAppTests;
+			productReference = 4A379024A5D5469304CCC140 /* SlurmAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9663FE5FFB627C3E793D7A70 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					E57EECC9FA459C2101DE4C90 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					E5ECB8321E1FED1F3E29670B = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 927857984B22A57D71969EE0 /* Build configuration list for PBXProject "SlurmApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 2B63AE6AF1A3BF83EB1192F7;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				163CFCE291F60B839E6A3158 /* XCLocalSwiftPackageReference "Vendor/Shout" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9A4AF679DF6A77968ABF6E85 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E57EECC9FA459C2101DE4C90 /* SlurmApp */,
+				E5ECB8321E1FED1F3E29670B /* SlurmAppTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0D2FAAE4CB04DE9FAD58D759 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A01F49F28A78D8DD148D758 /* scontrol_job.txt in Resources */,
+				94A088F08D6FE2CBF399CAB8 /* scontrol_partition.txt in Resources */,
+				23B42FEA33EA278A3F13BB73 /* sinfo.txt in Resources */,
+				831F39CAE9BE6081FC0564DB /* sinfo_gres.txt in Resources */,
+				D6CD7E22BC33B52427C6A5EC /* sinfo_partition_gres.txt in Resources */,
+				247FBE9DA72559E3C27351D7 /* squeue.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7435B0C9074DF632F0368628 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5261D7F882B957556078B80F /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		162E86FBB8099108C73EF668 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1ABEE9F601D8D7822FB4FF6 /* ReadOnlyGuardTests.swift in Sources */,
+				CEEFD2F06FBEF7CE2CA38DAB /* SSHIntegrationTests.swift in Sources */,
+				4DA9F6B7334B944B186DC0AB /* SlurmParserTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		71C940898DE50BDE413D641B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4C2F4927130FD96E5E3F6332 /* AppState.swift in Sources */,
+				D79B06E1E0E2151487D95377 /* BatchActions.swift in Sources */,
+				7C7D88BCC1381A201D5D531E /* BookmarksStore.swift in Sources */,
+				F8821AC083D9E12575B6E972 /* BookmarksView.swift in Sources */,
+				AA8A3F3C79248A160A3CBCFF /* ConnectionSetupView.swift in Sources */,
+				5C657E55A4FB1D7A280ECB88 /* CopyableText.swift in Sources */,
+				AB72812E76C19B189FED798E /* Credentials.swift in Sources */,
+				8DD8C7A459EAA65C52718994 /* GlassModal.swift in Sources */,
+				05537A8C2F6A0CCFAF00A259 /* GpuComponents.swift in Sources */,
+				62DD26C839B3EB4911A9DCD2 /* GpuHoursSheetView.swift in Sources */,
+				7DDE1DEB5C0FCDAE093D4B4D /* HelpOverlayView.swift in Sources */,
+				FF9816C725D3EB4B95A261FC /* InteractiveSessionView.swift in Sources */,
+				59F7C0D74A47FBC8F5FA2B92 /* JobDetailView.swift in Sources */,
+				3EC6E33948C47827AA7BEB2A /* JobsView.swift in Sources */,
+				D9814140A6FB7E271C4B729F /* KeyboardShortcuts.swift in Sources */,
+				B05DE126716F4AE8711608B4 /* KeychainStore.swift in Sources */,
+				902DA43E6CA1AC14CAAD5D2F /* MainTabView.swift in Sources */,
+				4247C918A59CF93F8F3213A0 /* PartitionDetailsCard.swift in Sources */,
+				36BDEA2F85C81B618E2818EA /* PartitionSheetView.swift in Sources */,
+				1CE38DA5A68B666E87A82DB1 /* PlatformExtensions.swift in Sources */,
+				FB8C5FA945576061C3825E87 /* RootView.swift in Sources */,
+				9F95DDE08A4DE101CF6F7015 /* SSHClient.swift in Sources */,
+				0156282C24C16314C5193732 /* SSHKeyLoader.swift in Sources */,
+				5C87C516DE5BE0DC3868ED74 /* SettingsView.swift in Sources */,
+				0C78B1DD70F65A98DEE5C8BC /* Shimmer.swift in Sources */,
+				7B0D440CC88B440C009C9EAC /* SlurmApp.swift in Sources */,
+				1F109DE28F13D667C706B389 /* SlurmModels.swift in Sources */,
+				AF076C7C050DD780AD69D29C /* SlurmParser.swift in Sources */,
+				A727E07574C634ACD88CD898 /* SlurmService.swift in Sources */,
+				0DF02FC308926D24FD10A079 /* SubmitJobView.swift in Sources */,
+				04BAC85AE12D218E1814BCD7 /* TerminalLauncher.swift in Sources */,
+				9E1DB645653D057DC20E5DAE /* Theme.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		355A59816CA49C0782D821D8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E57EECC9FA459C2101DE4C90 /* SlurmApp */;
+			targetProxy = 47BE365F00DEE20D8727125B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1B685F8244AAAF51B68F8A8B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = de.cwitzl.slurmapp.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SlurmApp.app/Contents/MacOS/SlurmApp";
+			};
+			name = Release;
+		};
+		1C76B48307F7D21AD3143438 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = de.cwitzl.slurmapp.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SlurmApp.app/Contents/MacOS/SlurmApp";
+			};
+			name = Debug;
+		};
+		2ADE9392542ADA6926BF85CB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SlurmApp/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Slurm;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.cwitzl.slurmapp;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		44F2A0E720B5209B4DF90BD2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.10;
+			};
+			name = Release;
+		};
+		99D4CDE46888B472FE555BAF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SlurmApp/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Slurm;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.cwitzl.slurmapp;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DACA018E189B78095096128A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.10;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2DDE5C88B40F44B5F768F152 /* Build configuration list for PBXNativeTarget "SlurmAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1C76B48307F7D21AD3143438 /* Debug */,
+				1B685F8244AAAF51B68F8A8B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		927857984B22A57D71969EE0 /* Build configuration list for PBXProject "SlurmApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DACA018E189B78095096128A /* Debug */,
+				44F2A0E720B5209B4DF90BD2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		ADA3A027F71812CB20E9984E /* Build configuration list for PBXNativeTarget "SlurmApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99D4CDE46888B472FE555BAF /* Debug */,
+				2ADE9392542ADA6926BF85CB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		163CFCE291F60B839E6A3158 /* XCLocalSwiftPackageReference "Vendor/Shout" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/Shout;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		95C338561B86961D553AD5C1 /* Shout */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Shout;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 9663FE5FFB627C3E793D7A70 /* Project object */;
+}

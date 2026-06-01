@@ -1,0 +1,10 @@
+/etc/bash.bashrc: line 3: bind: warning: line editing not enabled
+all|gpu:a100:8(S:0-1)
+all|gpu:h200:8(S:0-1)
+all|gpu:l40s:4(S:0-1)
+all|gpu:rtx:8(S:0)
+p0*|gpu:rtx:8(S:0)
+p1|gpu:a100:8(S:0-1)
+p2|gpu:a100:8(S:0-1)
+p4|gpu:h200:8(S:0-1)
+p6|gpu:l40s:4(S:0-1)

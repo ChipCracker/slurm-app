@@ -1,0 +1,32 @@
+/etc/bash.bashrc: line 3: bind: warning: line editing not enabled
+JobId=167923 JobName=ge26_shard1
+   UserId=steigerwaldph(2039) GroupId=staff(1001) MCS_label=N/A
+   Priority=4491 Nice=0 Account=staff QOS=preemptible
+   JobState=RUNNING Reason=None Dependency=(null)
+   Requeue=1 Restarts=1 BatchFlag=1 Reboot=0 ExitCode=0:0
+   RunTime=03:03:30 TimeLimit=UNLIMITED TimeMin=N/A
+   SubmitTime=2026-05-26T16:34:08 EligibleTime=2026-05-26T16:36:09
+   AccrueTime=2026-05-26T16:36:09
+   StartTime=2026-05-26T16:36:22 EndTime=Unknown Deadline=N/A
+   PreemptEligibleTime=2026-05-26T16:36:22 PreemptTime=None
+   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-05-26T16:36:22 Scheduler=Main
+   Partition=p0 AllocNode:Sid=kiz2:1991321
+   ReqNodeList=(null) ExcNodeList=(null)
+   NodeList=ml0
+   BatchHost=ml0
+   NumNodes=1 NumCPUs=4 NumTasks=1 CPUs/Task=4 ReqB:S:C:T=0:0:*:*
+   TRES=cpu=4,mem=32G,node=1,billing=4,gres/gpu=1,gres/gpu:rtx=1
+   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*
+   MinCPUsNode=4 MinMemoryNode=32G MinTmpDiskNode=0
+   Features=(null) DelayBoot=00:00:00
+   OverSubscribe=OK Contiguous=0 Licenses=(null) Network=(null)
+   Command=/nfs/scratch/staff/steigerwaldph/GermEval2026/cluster/predict_voters.sbatch cluster/voters_shard1.json
+   WorkDir=/nfs/scratch/staff/steigerwaldph/GermEval2026
+   StdErr=/nfs1/scratch/staff/steigerwaldph/GermEval2026/logs/predict_voters_167923.err
+   StdIn=/dev/null
+   StdOut=/nfs1/scratch/staff/steigerwaldph/GermEval2026/logs/predict_voters_167923.out
+   Power=
+   MemPerTres=gpu:16384
+   TresPerNode=gres:gpu:1
+   
+

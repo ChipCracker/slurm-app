@@ -1,0 +1,943 @@
+import SwiftUI
+
+/// Which log stream a `LogDetailSheetView` shows. Limited to the two
+/// streams the detail pane renders as expandable "log windows".
+enum LogStream {
+    case stdout, stderr
+}
+
+/// Payload for the full-size log modal. Carries the *live* view-model
+/// reference (not a snapshot) so Follow-mode keeps streaming into the
+/// modal while it's open. `JobsView` presents it via `.glassModal(item:)`,
+/// so it has to be `Identifiable`.
+struct LogModalSelection: Identifiable {
+    let vm: JobDetailViewModel
+    let stream: LogStream
+    var id: String {
+        let key = stream == .stderr ? "stderr" : "stdout"
+        return "\(key)-\(vm.job.jobId)"
+    }
+}
+
+@MainActor
+final class JobDetailViewModel: ObservableObject {
+    @Published var details: JobDetails?
+    @Published var script: String = ""
+    @Published var stdout: String = ""
+    @Published var stderr: String = ""
+    @Published var stdoutPath: String?
+    @Published var stderrPath: String?
+    @Published var gpuStats: [GpuStat] = []
+    @Published var maxRssMB: Double?
+    @Published var liveError: String?
+    @Published var loading = false
+    @Published var initialLoadDone: Bool = false
+    @Published var error: String?
+    @Published var followMode: Bool = false
+    @Published var availableQos: [String] = []
+    @Published var availablePartitions: [String] = []
+
+    let job: Job
+    private weak var appState: AppState?
+
+    init(job: Job) { self.job = job }
+
+    func bind(_ s: AppState) { self.appState = s }
+
+    func load() async {
+        guard let slurm = appState?.slurm else { return }
+        loading = true; defer { loading = false }
+        do {
+            let details = try await slurm.fetchJobDetails(job.jobId)
+            self.details = details
+            self.script = (try? await slurm.fetchBatchScript(job.jobId)) ?? ""
+            self.availableQos = (try? await slurm.fetchAvailableQos()) ?? []
+            self.availablePartitions = (try? await slurm.fetchAvailablePartitions()) ?? []
+            self.error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        // Always try the logs — even when scontrol show job throws, we'd
+        // rather render an "(no log path)" card than a missing one.
+        await refreshLogs()
+        if !initialLoadDone {
+            withAnimation(.smooth(duration: 0.4)) {
+                initialLoadDone = true
+            }
+        }
+    }
+
+    func updateQos(_ newQos: String) async -> String? {
+        guard let slurm = appState?.slurm else { return nil }
+        do {
+            let result = try await slurm.updateJobQos(job.jobId, qos: newQos)
+            return result.isEmpty ? "QoS auf \(newQos) gesetzt." : result
+        } catch {
+            return "Fehler: \(error.localizedDescription)"
+        }
+    }
+
+    func updatePartition(_ newPartition: String) async -> String? {
+        guard let slurm = appState?.slurm else { return nil }
+        do {
+            let result = try await slurm.updateJobPartition(job.jobId, partition: newPartition)
+            return result.isEmpty ? "Partition auf \(newPartition) gesetzt." : result
+        } catch {
+            return "Fehler: \(error.localizedDescription)"
+        }
+    }
+
+    func refreshLogs() async {
+        guard let slurm = appState?.slurm else { return }
+        let rawOut = details?.stdOut.flatMap { $0 == "(null)" ? nil : $0 }
+        let rawErr = details?.stdErr.flatMap { $0 == "(null)" ? nil : $0 }
+        let outPath = rawOut.map { expandSlurmPath($0) }
+        let errPath = rawErr.map { expandSlurmPath($0) }
+        self.stdoutPath = outPath
+        self.stderrPath = errPath
+
+        self.stdout = await readLog(slurm: slurm, path: outPath, stream: "stdout")
+        self.stderr = await readLog(slurm: slurm, path: errPath, stream: "stderr")
+    }
+
+    private func readLog(slurm: SlurmService, path: String?, stream: String) async -> String {
+        guard let path, !path.isEmpty else {
+            return "[Kein \(stream)-Pfad in scontrol show job]"
+        }
+        do {
+            let text = try await slurm.tailLog(path: path, lines: 200)
+            return text.isEmpty ? "[\(stream) ist (noch) leer]\n\(path)" : text
+        } catch {
+            return "[Konnte \(stream) nicht lesen: \(error.localizedDescription)]\n\(path)"
+        }
+    }
+
+    /// Slurm log paths often contain `%j`, `%x`, `%u`, `%A`, `%a` placeholders.
+    /// Most slurmd-installations expand these before exposing the path via
+    /// `scontrol show job`, but some don't — expand them ourselves as a
+    /// fallback so `tail` doesn't choke on the literal `%j`.
+    private func expandSlurmPath(_ raw: String) -> String {
+        var s = raw
+        let jobId = job.jobId
+        let baseId = jobId.split(separator: "_").first.map(String.init) ?? jobId
+        let arrayIdx = jobId.contains("_") ? String(jobId.split(separator: "_").last ?? "") : "0"
+        s = s.replacingOccurrences(of: "%j", with: jobId)
+        s = s.replacingOccurrences(of: "%A", with: baseId)
+        s = s.replacingOccurrences(of: "%a", with: arrayIdx)
+        s = s.replacingOccurrences(of: "%x", with: job.name)
+        s = s.replacingOccurrences(of: "%u", with: job.user)
+        return s
+    }
+
+    func refreshLiveStats() async {
+        guard let slurm = appState?.slurm, job.isRunning else { return }
+        do {
+            let stats = try await slurm.liveGpuStats(jobId: job.jobId)
+            self.gpuStats = stats
+            self.liveError = nil
+        } catch {
+            self.liveError = error.localizedDescription
+        }
+        self.maxRssMB = try? await slurm.fetchJobMemoryMB(job.jobId)
+    }
+}
+
+struct JobDetailView: View {
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var bookmarks: BookmarksStore
+    @StateObject private var vm: JobDetailViewModel
+    @State private var showCancelConfirm = false
+    @State private var actionMessage: String?
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    /// Eine Spalte auf dem iPhone (kompakte Breite), damit lange Werte nicht
+    /// abgeschnitten werden; zwei Spalten auf iPad/macOS.
+    private var statColumns: [GridItem] {
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            return [GridItem(.flexible(), spacing: 16)]
+        }
+        #endif
+        return [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
+    }
+
+    /// Hands an expand request up to `JobsView`, which owns the glass modal
+    /// so it dims the whole window and joins the shared Esc / Space-close /
+    /// focus-restore machinery. Defaults to a no-op for previews.
+    private let onExpandLog: (LogModalSelection) -> Void
+
+    init(job: Job, onExpandLog: @escaping (LogModalSelection) -> Void = { _ in }) {
+        _vm = StateObject(wrappedValue: JobDetailViewModel(job: job))
+        self.onExpandLog = onExpandLog
+    }
+
+    var body: some View {
+        let pending = !vm.initialLoadDone
+        return ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        header.id("header")
+                        statsGrid
+                        if isOwnJob && vm.job.isRunning {
+                            liveStatsCard.id("liveGpu")
+                        }
+                        scriptSection(initialLoading: pending)
+                        logSection(
+                            title: "stderr", body: vm.stderr, color: Theme.danger,
+                            initialLoading: pending
+                        )
+                        logSection(
+                            title: "stdout", body: vm.stdout, color: Theme.success,
+                            initialLoading: pending
+                        ).id("logs")
+                        if let msg = actionMessage {
+                            ErrorBanner(message: msg, tint: Theme.warning)
+                        }
+                        if let err = vm.error {
+                            ErrorBanner(message: err)
+                        }
+                        actions
+                    }
+                    .padding()
+                }
+                .background(detailShortcuts(proxy: proxy))
+            }
+        }
+        .task {
+            vm.bind(appState)
+            await vm.load()
+            // Periodic log + GPU stat refresh while the view lives. GPU stats
+            // only run for the current user's running jobs — srun --overlap on
+            // a foreign job will be rejected by Slurm anyway, and we don't
+            // want to spam the cluster with that.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
+                if Task.isCancelled { break }
+                if vm.followMode { await vm.refreshLogs() }
+                if isOwnJob && vm.job.isRunning { await vm.refreshLiveStats() }
+            }
+        }
+        .alert("Job abbrechen?", isPresented: $showCancelConfirm) {
+            Button("Abbrechen", role: .cancel) {}
+            Button("Bestätigen", role: .destructive) { Task { await cancel() } }
+        } message: {
+            Text("Job \(vm.job.jobId) wird mit scancel beendet.")
+        }
+        // Space inside the detail pane is routed here by JobsView (a single
+        // global Space binding lives there). We open the *active* log so the
+        // user doesn't have to aim — closing again is handled by JobsView's
+        // closeTopmostModal, which makes Space a clean toggle.
+        .onReceive(NotificationCenter.default.publisher(for: .requestExpandActiveLog)) { _ in
+            expandActiveLog()
+        }
+    }
+
+    /// Open the more relevant of the two log windows: stderr when it has
+    /// content (errors are what you usually want to read), otherwise stdout.
+    private func expandActiveLog() {
+        let stream: LogStream = !vm.stderr.isEmpty ? .stderr : .stdout
+        onExpandLog(LogModalSelection(vm: vm, stream: stream))
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Circle().fill(Theme.stateColor(vm.job.state)).frame(width: 10, height: 10)
+                Text(vm.job.jobId).font(.system(.title3, design: .monospaced).weight(.bold))
+                    .foregroundColor(Theme.textPrimary)
+                Spacer()
+                Text(vm.job.state).font(.caption.bold()).foregroundColor(Theme.stateColor(vm.job.state))
+                Button {
+                    bookmarks.add(Bookmark(jobId: vm.job.jobId, label: vm.job.name))
+                    actionMessage = "Bookmark gespeichert."
+                } label: {
+                    Image(systemName: "bookmark")
+                        .foregroundColor(Theme.accent)
+                        .iosTouchTarget()
+                }
+                .buttonStyle(.plain)
+                .help("Job als Bookmark speichern")
+            }
+            Text(vm.job.name).font(.title2).foregroundColor(Theme.textPrimary)
+            HStack(spacing: 8) {
+                pillOrPicker(
+                    label: vm.job.partition,
+                    color: Theme.cyan,
+                    editable: isOwnJob && vm.job.isPending,
+                    options: vm.availablePartitions,
+                    currentValue: vm.job.partition
+                ) { newValue in
+                    Task {
+                        let msg = await vm.updatePartition(newValue)
+                        if let msg { actionMessage = msg }
+                    }
+                }
+                pillOrPicker(
+                    label: "QoS \(vm.job.qos)",
+                    color: Theme.purple,
+                    editable: isOwnJob && (vm.job.isRunning || vm.job.isPending),
+                    options: vm.availableQos,
+                    currentValue: vm.job.qos
+                ) { newValue in
+                    Task {
+                        let msg = await vm.updateQos(newValue)
+                        if let msg { actionMessage = msg }
+                    }
+                }
+                if vm.job.gpus > 0 { tag("\(vm.job.gpus) GPU", color: Theme.success) }
+                tag("\(vm.job.cpus) CPU", color: Theme.warning)
+            }
+        }
+        .cardStyle()
+    }
+
+    /// Renders the standard `tag` pill. When `editable` is true and `options`
+    /// are available, the pill itself becomes a Menu trigger and gets a small
+    /// pencil glyph; the appearance otherwise stays identical to the read-only
+    /// pill so the current Partition/QoS is always visible.
+    @ViewBuilder
+    private func pillOrPicker(
+        label: String,
+        color: Color,
+        editable: Bool,
+        options: [String],
+        currentValue: String,
+        onChange: @escaping (String) -> Void
+    ) -> some View {
+        if editable && !options.isEmpty {
+            Menu {
+                ForEach(options, id: \.self) { opt in
+                    Button(opt) { if opt != currentValue { onChange(opt) } }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(label).font(.caption.bold())
+                    Image(systemName: "pencil")
+                        .font(.caption2)
+                        .opacity(0.7)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(color.opacity(0.18))
+                .foregroundColor(color)
+                .clipShape(Capsule())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Klicken zum Ändern")
+        } else {
+            tag(label, color: color)
+        }
+    }
+
+    /// Compact two-column block of label/value rows in a single card. Long
+    /// fields (Command) get a full-width row underneath the grid so paths
+    /// stay readable.
+    private var statsGrid: some View {
+        let pending = !vm.initialLoadDone
+        return VStack(alignment: .leading, spacing: 6) {
+            LazyVGrid(
+                columns: statColumns,
+                alignment: .leading,
+                spacing: 6
+            ) {
+                compactStat("Runtime", vm.job.runtime)
+                compactStat("Limit",
+                            vm.details?.timeLimit ?? "00:00:00",
+                            isSkeleton: vm.details?.timeLimit == nil && pending)
+                compactStat("Memory", vm.job.memory)
+                compactStat("Nodes", vm.job.node)
+                compactStat("User", vm.job.user)
+                compactStat("Account",
+                            vm.details?.account ?? "—",
+                            isSkeleton: vm.details?.account == nil && pending)
+                if let rss = vm.maxRssMB {
+                    compactStat("MaxRSS", formatMB(rss))
+                } else if pending && vm.job.isRunning {
+                    compactStat("MaxRSS", "0.0 GB", isSkeleton: true)
+                }
+                if !vm.job.reason.isEmpty {
+                    compactStat("Reason", vm.job.reason)
+                }
+            }
+            if let cmd = vm.details?.command {
+                commandRow(cmd, isSkeleton: false)
+            } else if pending {
+                commandRow("/path/to/script.sh", isSkeleton: true)
+            }
+        }
+        .padding(10)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private func compactStat(_ label: String, _ value: String, isSkeleton: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+                .frame(width: 72, alignment: .leading)
+            Text(value)
+                .font(.callout.monospaced())
+                .foregroundColor(Theme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+        }
+        .redacted(reason: isSkeleton ? .placeholder : [])
+        .shimmering(isSkeleton)
+        .animation(.smooth(duration: 0.4), value: value)
+    }
+
+    @ViewBuilder
+    private func commandRow(_ value: String, isSkeleton: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("Command")
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+                .frame(width: 72, alignment: .leading)
+            Text(value)
+                .font(.callout.monospaced())
+                .foregroundColor(Theme.textPrimary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+        }
+        .redacted(reason: isSkeleton ? .placeholder : [])
+        .shimmering(isSkeleton)
+    }
+
+    private func formatMB(_ mb: Double) -> String {
+        if mb >= 1024 { return String(format: "%.1f GB", mb / 1024) }
+        return String(format: "%.0f MB", mb)
+    }
+
+    private var liveStatsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "cpu").foregroundColor(Theme.purple)
+                Text("Live GPU Stats")
+                    .font(.headline).foregroundColor(Theme.textPrimary)
+                Spacer()
+                Text("5s auto-refresh").font(.caption2).foregroundColor(Theme.textSecondary)
+            }
+            Group {
+                if let err = vm.liveError {
+                    Text(err)
+                        .font(.caption.monospaced())
+                        .foregroundColor(Theme.danger)
+                        .lineLimit(3)
+                        .transition(.opacity)
+                } else if vm.gpuStats.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Self.skeletonGpuStats) { stat in
+                            gpuRow(stat)
+                        }
+                    }
+                    .redacted(reason: .placeholder)
+                    .shimmering()
+                    .transition(.opacity)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(vm.gpuStats) { stat in
+                            gpuRow(stat)
+                        }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.99)))
+                }
+            }
+            .animation(.smooth(duration: 0.4), value: vm.gpuStats.isEmpty)
+        }
+        .cardStyle()
+    }
+
+    private static let skeletonGpuStats: [GpuStat] = (0..<2).map { i in
+        GpuStat(
+            index: i,
+            name: "NVIDIA A100-SXM4-40GB",
+            utilizationPercent: 45,
+            memoryUsedMiB: 16_384,
+            memoryTotalMiB: 40_960,
+            powerDrawW: 220,
+            powerLimitW: 400,
+            temperatureC: 62
+        )
+    }
+
+    private func gpuRow(_ stat: GpuStat) -> some View {
+        let utilColor = Theme.utilizationColor(Double(stat.utilizationPercent) / 100)
+        let memColor  = Theme.utilizationColor(stat.memoryRatio)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("GPU \(stat.index)")
+                    .font(.caption.bold().monospaced())
+                    .foregroundColor(Theme.textPrimary)
+                Text(stat.name)
+                    .font(.caption2.monospaced())
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+                Spacer()
+                Text("\(stat.temperatureC)°C")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(stat.temperatureC > 75 ? Theme.danger : Theme.textSecondary)
+                Text(String(format: "%.0fW", stat.powerDrawW))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(Theme.textSecondary)
+            }
+            HStack(spacing: 8) {
+                metricBar(label: "util", value: "\(stat.utilizationPercent)%",
+                          ratio: Double(stat.utilizationPercent) / 100, color: utilColor)
+                metricBar(
+                    label: "mem",
+                    value: "\(stat.memoryUsedMiB / 1024)/\(stat.memoryTotalMiB / 1024) GB",
+                    ratio: stat.memoryRatio,
+                    color: memColor
+                )
+            }
+        }
+        .padding(8)
+        .background(Theme.surfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func metricBar(label: String, value: String, ratio: Double, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label).font(.caption2).foregroundColor(Theme.textSecondary)
+                Spacer()
+                Text(value).font(.caption2.monospacedDigit()).foregroundColor(Theme.textPrimary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2).fill(Theme.background.opacity(0.6))
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color)
+                        .frame(width: max(2, CGFloat(min(1, max(0, ratio))) * geo.size.width))
+                }
+            }
+            .frame(height: 4)
+        }
+    }
+
+    @ViewBuilder
+    private func scriptSection(initialLoading: Bool) -> some View {
+        Group {
+            if !vm.script.isEmpty {
+                scriptCard
+                    .transition(.opacity.combined(with: .scale(scale: 0.99)))
+            } else if initialLoading {
+                skeletonScriptCard
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func logSection(title: String, body: String, color: Color, initialLoading: Bool) -> some View {
+        Group {
+            if !body.isEmpty {
+                logCard(title: title, body: body, color: color)
+                    .transition(.opacity.combined(with: .scale(scale: 0.99)))
+            } else if initialLoading {
+                skeletonLogCard(title: title, color: color)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    /// Stand-in for the batch script while `scontrol write batch_script` is
+    /// in flight. Uses a shellish dummy body so the redacted/shimmer overlay
+    /// produces line shapes that resemble a real script.
+    private var skeletonScriptCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Batch-Skript").font(.headline).foregroundColor(Theme.textPrimary)
+                Spacer()
+                Text("lade…").font(.caption2).foregroundColor(Theme.textSecondary)
+            }
+            Text(Self.skeletonScriptBody)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundColor(Theme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
+        }
+        .cardStyle()
+        .redacted(reason: .placeholder)
+        .shimmering()
+    }
+
+    private func skeletonLogCard(title: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Circle().fill(color).frame(width: 8, height: 8)
+                Text(title).font(.headline).foregroundColor(Theme.textPrimary)
+                Spacer()
+                Text("lade…").font(.caption2).foregroundColor(Theme.textSecondary)
+            }
+            Text(Self.skeletonLogBody)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundColor(Theme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .cardStyle()
+        .redacted(reason: .placeholder)
+        .shimmering()
+    }
+
+    private static let skeletonScriptBody = """
+    #!/bin/bash
+    #SBATCH --partition=p2
+    #SBATCH --gres=gpu:1
+    #SBATCH --cpus-per-task=8
+    #SBATCH --mem-per-cpu=4G
+
+    module load cuda/12.4
+    source ~/.venv/bin/activate
+    python train.py --config configs/run.yaml
+    """
+
+    private static let skeletonLogBody = """
+    [2026-05-27 12:34:56] starting epoch 1/100
+    [2026-05-27 12:35:11] loss=2.4137 acc=0.21
+    [2026-05-27 12:35:27] loss=1.8901 acc=0.34
+    [2026-05-27 12:35:42] loss=1.5234 acc=0.48
+    [2026-05-27 12:35:58] loss=1.2018 acc=0.57
+    """
+
+    private var scriptCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Batch-Skript").font(.headline).foregroundColor(Theme.textPrimary)
+                if let path = vm.details?.value("Command") {
+                    Text(path)
+                        .font(.caption2.monospaced())
+                        .foregroundColor(Theme.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+                #if os(macOS)
+                if isOwnJob, let path = vm.details?.value("Command"), !path.isEmpty {
+                    Button {
+                        editInTerminal(path: path)
+                    } label: {
+                        Label("Bearbeiten", systemImage: "pencil")
+                            .font(.caption.bold())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Theme.accent.opacity(0.18))
+                    .foregroundColor(Theme.accent)
+                    .clipShape(Capsule())
+                    .help("Öffnet das Skript mit $EDITOR (oder vim) in Terminal.app")
+                }
+                #endif
+                Text("read-only").font(.caption2).foregroundColor(Theme.textSecondary)
+            }
+            ScrollView {
+                Text(vm.script)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundColor(Theme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(maxHeight: 260)
+        }
+        .cardStyle()
+    }
+
+    /// Open the remote script in $EDITOR (vim fallback) inside Terminal.app.
+    /// The app itself never writes to the server — the user edits in a real
+    /// PTY just like they would over plain ssh.
+    private func editInTerminal(path: String) {
+        guard let creds = appState.credentials else { return }
+        TerminalLauncher.openSSH(
+            host: creds.host,
+            user: creds.username,
+            port: creds.port,
+            remoteCommand: "${EDITOR:-vim} \(path)"
+        )
+    }
+
+    private func logCard(title: String, body: String, color: Color) -> some View {
+        let path = (title == "stderr") ? vm.stderrPath : vm.stdoutPath
+        let stream: LogStream = (title == "stderr") ? .stderr : .stdout
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                // Circle + title + expand glyph form one click target that
+                // opens the full-size log modal. Kept off the body text so it
+                // doesn't fight `.textSelection`.
+                HStack(spacing: 8) {
+                    Circle().fill(color).frame(width: 8, height: 8)
+                    Text(title).font(.headline).foregroundColor(Theme.textPrimary)
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.caption2.bold())
+                        .foregroundColor(color)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onExpandLog(LogModalSelection(vm: vm, stream: stream))
+                }
+                .help("Log vergrössert öffnen (Leertaste)")
+                if let p = path {
+                    Text(p)
+                        .font(.caption2.monospaced())
+                        .foregroundColor(Theme.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .textSelection(.enabled)
+                }
+                Spacer()
+                Toggle(isOn: $vm.followMode) {
+                    Label("Follow", systemImage: vm.followMode ? "play.fill" : "play")
+                        .font(.caption.bold())
+                }
+                .toggleStyle(.button)
+                .controlSize(.small)
+                Text("letzte 200 Zeilen").font(.caption2).foregroundColor(Theme.textSecondary)
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(body)
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundColor(Theme.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .id("logBottom-\(title)")
+                }
+                .frame(maxHeight: 260)
+                .onChange(of: body) { _, _ in
+                    if vm.followMode {
+                        withAnimation(.linear(duration: 0.15)) {
+                            proxy.scrollTo("logBottom-\(title)", anchor: .bottom)
+                        }
+                    }
+                }
+            }
+        }
+        .cardStyle()
+    }
+
+    private var actions: some View {
+        HStack(spacing: 10) {
+            Button {
+                Task { await vm.load() }
+            } label: {
+                Label("Aktualisieren", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+            }
+            .background(Theme.surfaceElevated)
+            .foregroundColor(Theme.textPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            #if os(macOS)
+            if isOwnJob && vm.job.isRunning {
+                Button {
+                    if let creds = appState.credentials {
+                        TerminalLauncher.attach(jobId: vm.job.jobId, credentials: creds)
+                    }
+                } label: {
+                    Label("Attach", systemImage: "terminal")
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                }
+                .background(Theme.purple.opacity(0.18))
+                .foregroundColor(Theme.purple)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .help("srun --overlap --pty bash in Terminal.app")
+            }
+            #endif
+
+            if isOwnJob && (vm.job.isRunning || vm.job.isPending) {
+                Button(role: .destructive) {
+                    showCancelConfirm = true
+                } label: {
+                    Label("scancel", systemImage: "xmark.circle")
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                }
+                .background(Theme.danger.opacity(0.18))
+                .foregroundColor(Theme.danger)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    /// Hidden buttons binding `f`/`v`/`l`/`Y` inside the detail pane.
+    private func detailShortcuts(proxy: ScrollViewProxy) -> some View {
+        ZStack {
+            Shortcut.hiddenButton(.toggleFollow) {
+                vm.followMode.toggle()
+                actionMessage = "Follow-Mode: \(vm.followMode ? "an" : "aus")"
+            }
+            Shortcut.hiddenButton(.focusLiveGpu) {
+                withAnimation { proxy.scrollTo("liveGpu", anchor: .top) }
+            }
+            Shortcut.hiddenButton(.focusLogs) {
+                withAnimation { proxy.scrollTo("logs", anchor: .top) }
+            }
+            Shortcut.hiddenButton(.copyActiveLog) {
+                let active = !vm.stderr.isEmpty ? vm.stderr : vm.stdout
+                if !active.isEmpty {
+                    Clipboard.copy(active)
+                    actionMessage = "Log kopiert (\(active.count) Zeichen)."
+                }
+            }
+        }
+    }
+
+    /// True if the job belongs to the currently authenticated user.
+    /// Live GPU stats and scancel are only offered for own jobs — Slurm
+    /// rejects both for foreign jobs, and the UI shouldn't promise it can.
+    private var isOwnJob: Bool {
+        guard let me = appState.credentials?.username else { return false }
+        return vm.job.user == me
+    }
+
+    private func cancel() async {
+        guard let slurm = appState.slurm else { return }
+        do {
+            _ = try await slurm.cancelJob(vm.job.jobId)
+            actionMessage = "scancel gesendet."
+        } catch {
+            actionMessage = "Fehler: \(error.localizedDescription)"
+        }
+    }
+
+    private func tag(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption.bold())
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(color.opacity(0.18))
+            .foregroundColor(color)
+            .clipShape(Capsule())
+    }
+}
+
+/// Full-size glass-modal view of a single log stream. Reads straight from
+/// the detail pane's live view-model, so Follow-mode keeps streaming new
+/// lines in while the modal is open. Presented by `JobsView`.
+struct LogDetailSheetView: View {
+    @ObservedObject var vm: JobDetailViewModel
+    @State private var stream: LogStream
+    @Environment(\.glassModalDismiss) private var dismiss
+
+    init(vm: JobDetailViewModel, stream: LogStream) {
+        _vm = ObservedObject(wrappedValue: vm)
+        _stream = State(initialValue: stream)
+    }
+
+    private var title: String { stream == .stderr ? "stderr" : "stdout" }
+    private var color: Color { stream == .stderr ? Theme.danger : Theme.success }
+    private var content: String { stream == .stderr ? vm.stderr : vm.stdout }
+    private var path: String? { stream == .stderr ? vm.stderrPath : vm.stdoutPath }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider().background(.white.opacity(0.08))
+            logBody
+        }
+        .background(
+            Shortcut.hiddenButton(.toggleLogStream) {
+                stream = (stream == .stderr) ? .stdout : .stderr
+            }
+        )
+    }
+
+    private var header: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle().fill(color.opacity(0.18)).frame(width: 48, height: 48)
+                Image(systemName: "doc.plaintext")
+                    .font(.title2)
+                    .foregroundColor(color)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title.uppercased())
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                Text("\(vm.job.jobId) · \(vm.job.name)")
+                    .font(.title2.bold())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let p = path {
+                    Text(p)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer()
+            Picker("", selection: $stream) {
+                Text("stderr").tag(LogStream.stderr)
+                Text("stdout").tag(LogStream.stdout)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .help("stderr/stdout umschalten (w)")
+            Toggle(isOn: $vm.followMode) {
+                Label("Follow", systemImage: vm.followMode ? "play.fill" : "play")
+                    .font(.caption.bold())
+            }
+            .toggleStyle(.button)
+            .controlSize(.small)
+            .help("Log-Follow-Mode (5s auto-refresh)")
+
+            Button {
+                if !content.isEmpty { Clipboard.copy(content) }
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.title3)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .background(.thinMaterial, in: Circle())
+            .help("Log kopieren")
+
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.title3)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .background(.thinMaterial, in: Circle())
+            .keyboardShortcut(.cancelAction)
+            .help("Schliessen (Esc / Leertaste)")
+        }
+        .padding(.horizontal, 24).padding(.vertical, 18)
+    }
+
+    private var logBody: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                Text(content.isEmpty ? "[\(title) ist (noch) leer]" : content)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundColor(Theme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(20)
+                    .id("logBottom")
+            }
+            .onChange(of: content) { _, _ in
+                if vm.followMode {
+                    withAnimation(.linear(duration: 0.15)) {
+                        proxy.scrollTo("logBottom", anchor: .bottom)
+                    }
+                }
+            }
+            .onAppear {
+                if vm.followMode {
+                    proxy.scrollTo("logBottom", anchor: .bottom)
+                }
+            }
+        }
+    }
+}

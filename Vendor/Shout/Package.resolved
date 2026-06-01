@@ -1,0 +1,15 @@
+{
+  "originHash" : "0f21e18bcfca099a36b049266d14fb6473a80932df0e80558ce71483cb5d9ebc",
+  "pins" : [
+    {
+      "identity" : "bluesocket",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/IBM-Swift/BlueSocket",
+      "state" : {
+        "revision" : "c9894fd117457f1d006575fbfb2fdfd6f79eac03",
+        "version" : "1.0.200"
+      }
+    }
+  ],
+  "version" : 3
+}
