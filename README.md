@@ -1,39 +1,40 @@
 # Slurm — iOS & macOS
 
-Native SwiftUI-App für **iPhone, iPad und Mac** (kein Catalyst — natives
-macOS-Target), die die Funktionen von [`slurm-tui`](../slurm-tui) über eine
-SSH-Verbindung zum kiz0-Login-Node bereitstellt.
+Native SwiftUI app for **iPhone, iPad and Mac** (no Catalyst — a native macOS
+target) that exposes the features of [`slurm-tui`](../slurm-tui) over an SSH
+connection to the kiz0 login node.
 
-Tokyo-Night-Theme, Pull-to-Refresh, Job-Liste mit Filter & Sortierung,
-GPU-Allocation-Übersicht, Partition-Details, Batch-Skript- und Log-Anzeige,
-Bookmarks. Read-only-Schicht standardmäßig aktiv, Mutationen (sbatch,
-scancel, scontrol update) gehen explizit über `executeWrite`.
+Tokyo Night theme, pull-to-refresh, job list with filtering & sorting, GPU
+allocation overview, partition details, batch-script and log viewer, bookmarks,
+and multi-selection with batch actions (cancel, QoS/partition update,
+hold/release/requeue). A read-only layer is active by default; mutating commands
+(sbatch, scancel, scontrol update) go explicitly through `executeWrite`.
 
 ## Setup
 
 ```bash
-cd ~/Documents/Entwicklung/slurm-ios
+git clone git@github.com:ChipCracker/slurm-app.git
+cd slurm-app
 
-# 1) SSH-Stack (OpenSSL + libssh2) als xcframeworks bauen — EINMALIG, danach
-#    in Vendor/ eingecheckt. Nötig, weil libssh2 auf iOS nicht aus Homebrew
-#    kommen kann. Default: arm64-Slices; universell mit BUILD_X86_64=1.
-./scripts/build-libssh2-xcframework.sh         # erzeugt Vendor/{openssl,libssh2}.xcframework
+# 1) Build the SSH stack (OpenSSL + libssh2) as xcframeworks — ONE-TIME; the
+#    results are checked into Vendor/. Required because libssh2 cannot come from
+#    Homebrew on iOS. Default: arm64 slices; universal with BUILD_X86_64=1.
+./scripts/build-libssh2-xcframework.sh         # produces Vendor/{openssl,libssh2}.xcframework
 
-# 2) Xcode-Projekt generieren (XcodeGen: `brew install xcodegen`)
+# 2) Generate the Xcode project (XcodeGen: `brew install xcodegen`)
 xcodegen generate
 
-# 3) Dependencies (lokaler Shout-Fork + BlueSocket) auflösen
+# 3) Resolve dependencies (local Shout fork + BlueSocket)
 xcodebuild -resolvePackageDependencies -project SlurmApp.xcodeproj -scheme SlurmApp
 
-# In Xcode öffnen
+# Open in Xcode
 open SlurmApp.xcodeproj
 ```
 
-> Der SSH-Stack nutzt **libssh2** (nicht Citadel): ein lokaler Shout-Fork
-> (`Vendor/Shout`) linkt statt der Homebrew-`systemLibrary` gegen die
-> vorgebauten `Vendor/*.xcframework`. So baut derselbe Code für macOS **und**
-> iOS (Device + Simulator). Details siehe
-> [`scripts/build-libssh2-xcframework.sh`](scripts/build-libssh2-xcframework.sh).
+> The SSH stack uses **libssh2** (not Citadel): a local Shout fork (`Vendor/Shout`)
+> links against the prebuilt `Vendor/*.xcframework` instead of Homebrew's
+> `systemLibrary`. That way the same code builds for macOS **and** iOS (device +
+> simulator). See [`scripts/build-libssh2-xcframework.sh`](scripts/build-libssh2-xcframework.sh).
 
 ## Build & Run
 
@@ -52,7 +53,7 @@ xcrun simctl install "$SIM_ID" build/Build/Products/Debug-iphonesimulator/SlurmA
 xcrun simctl launch "$SIM_ID" de.cwitzl.slurmapp
 ```
 
-### macOS (nativ)
+### macOS (native)
 
 ```bash
 xcodebuild -project SlurmApp.xcodeproj -scheme SlurmApp \
@@ -63,55 +64,57 @@ xcodebuild -project SlurmApp.xcodeproj -scheme SlurmApp \
 open build/Build/Products/Debug/SlurmApp.app
 ```
 
-Auf Mac läuft die App mit nativer **NavigationSplitView-Sidebar**, auf iPhone/iPad
-mit TabView. Gleicher Source-Tree, Unterschiede in `MainTabView.swift` per
-`#if os(macOS)`.
+On the Mac the app runs with a native **NavigationSplitView sidebar**, on
+iPhone/iPad with a TabView. Same source tree; the differences live in
+`MainTabView.swift` behind `#if os(macOS)`.
 
 ## Tests
 
 ```bash
 xcodebuild -project SlurmApp.xcodeproj -scheme SlurmApp \
-  -destination "platform=iOS Simulator,id=$SIM_ID" \
+  -destination "platform=macOS,arch=arm64" \
   -derivedDataPath build test
 ```
 
-Aktuell: 18 Unit-Tests grün (Parser, Read-Only-Guard, Usage-Aggregation,
-Array-Job-ID-Normalisierung). Drei SSH-Integration-Tests laufen gegen ein
-echtes Cluster und werden ohne Credentials übersprungen.
+Currently: 20 unit tests pass (parser, read-only guard, usage aggregation,
+array-job-ID normalization). Three SSH integration tests run against a real
+cluster and are skipped without credentials (23 tests total).
 
-### Integration-Tests gegen kiz0 aktivieren
+### Enabling the integration tests against kiz0
 
-Die Tests lesen Credentials aus Env-Vars. Da `xcodebuild test` Env-Vars
-**nicht** an den Simulator durchreicht, ist der einfachste Weg ein
-xctestplan oder das Setzen der Variablen im Scheme. Alternativ direkt
-über `xcrun simctl spawn …` mit gesetzten Env-Vars.
+The tests read credentials from environment variables. Since `xcodebuild test`
+does **not** forward env vars to the simulator, the simplest options are an
+xctestplan or setting the variables in the scheme. Alternatively, run directly
+via `xcrun simctl spawn …` with the env vars set.
 
-Variablen:
-- `SLURMIOS_SSH_HOST` (z. B. `kiz0.in.ohmportal.de`)
+Variables:
+- `SLURMIOS_SSH_HOST` (e.g. `kiz0.in.ohmportal.de`)
 - `SLURMIOS_SSH_USER`
-- `SLURMIOS_SSH_PASSWORD` **oder** `SLURMIOS_SSH_KEY` (PEM-Inhalt, optional
+- `SLURMIOS_SSH_PASSWORD` **or** `SLURMIOS_SSH_KEY` (PEM contents, optionally
   `SLURMIOS_SSH_PASSPHRASE`)
 
-Die Tests führen ausschließlich **read-only** Befehle aus (`echo`,
-`hostname`, `squeue`) und greifen nicht in den Cluster-Zustand ein.
+The tests run **read-only** commands only (`echo`, `hostname`, `squeue`) and do
+not change cluster state.
 
-## Features (TUI-Parität)
+## Features (TUI parity)
 
-| TUI | iOS-App |
+| TUI | App |
 |---|---|
-| GPU Allocation Monitor | `GpuMonitorView` (10s Auto-Refresh) |
-| Job-Liste, Sortierung, Filter | `JobsView` (sortable, searchable, 10s Auto-Refresh) |
-| Job-Details inkl. Skript & Logs | `JobDetailView` (Skript via `scontrol write batch_script`, Logs via `tail`) |
-| Partition-Details | `PartitionsView` → `PartitionDetailView` |
-| Bookmarks | `BookmarksView` (lokal in `Documents/bookmarks.json`) |
-| Job-Cancel | `JobDetailView` → `scancel` mit Bestätigungsdialog |
-| Job-Submission, Interactive Sessions | Geplant — `SlurmService.submitScript` ist verdrahtet, UI dafür folgt |
-| Terminal/Attach | Auf iOS nicht sinnvoll, weggelassen |
-| Live nvidia-smi auf Compute-Node | Aktuell nur Login-Node-Aggregat via sinfo + squeue |
+| GPU allocation monitor | Cluster inspector (10s auto-refresh) |
+| Job list, sorting, filtering | `JobsView` (sortable, searchable, 10s auto-refresh) |
+| Job details incl. script & logs | `JobDetailView` (script via `scontrol write batch_script`, logs via `tail`) |
+| Partition details | `PartitionSheetView` |
+| Bookmarks | `BookmarksView` (stored locally in `Documents/bookmarks.json`) |
+| Cancel job | `scancel` with confirmation dialog |
+| Multi-selection + batch actions | cancel, QoS/partition update, hold/release/requeue (per-job loop) |
+| Job submission | `SubmitJobView` → `sbatch` |
+| Interactive sessions | macOS only (delegated to Terminal.app via `srun --pty`) |
+| Terminal/Attach | omitted on iOS (no PTY surface) |
+| Live nvidia-smi on compute node | currently only login-node aggregate via sinfo + squeue |
 
-## Read-Only-Garantie
+## Read-only guarantee
 
-`SSHClient.execute(_:)` lässt nur whitelisted Befehle durch:
+`SSHClient.execute(_:)` only lets whitelisted commands through:
 
 ```
 echo  hostname  whoami  cat  tail  head  ls  stat  wc  grep  awk
@@ -121,17 +124,22 @@ sacctmgr show       scontrol show       scontrol write batch_script
 nvidia-smi --query  nvidia-smi -q
 ```
 
-Mutierende Befehle (`sbatch`, `scancel`, `scontrol update`, `srun`, etc.)
-laufen ausschließlich über `SSHClient.executeWrite(_:)` und werden im UI
-nur nach expliziter Nutzer-Bestätigung gefeuert. Shell-Redirections (`>`,
-`<`) sind im Guard hart verboten. Tests in `ReadOnlyGuardTests` halten das
-Verhalten fest.
+Mutating commands (`sbatch`, `scancel`, `scontrol update`, `srun`, etc.) run
+exclusively through `SSHClient.executeWrite(_:)` and are only fired from the UI
+after explicit user confirmation. Shell redirections (`>`, `<`) are hard-blocked
+by the guard. `ReadOnlyGuardTests` pins this behavior.
 
-## Projektstruktur
+## Project layout
 
 ```
-slurm-ios/
+slurm-app/
 ├── project.yml                       # xcodegen
+├── scripts/
+│   └── build-libssh2-xcframework.sh  # builds Vendor/*.xcframework
+├── Vendor/
+│   ├── Shout/                        # local Shout fork (libssh2 wrapper)
+│   ├── libssh2.xcframework
+│   └── openssl.xcframework
 ├── SlurmApp/
 │   ├── App/
 │   │   ├── SlurmApp.swift
@@ -140,45 +148,36 @@ slurm-ios/
 │   │   ├── Credentials.swift
 │   │   └── SlurmModels.swift         # Job, Partition, JobDetails, GpuStat, Bookmark
 │   ├── Services/
-│   │   ├── SSHClient.swift           # Shout/libssh2-Wrapper + ReadOnlyGuard
-│   │   ├── SlurmService.swift        # squeue/sinfo/scontrol/tail Logik
-│   │   ├── SlurmParser.swift         # Stringly typed → Domain Models
-│   │   ├── KeychainStore.swift       # Credentials → iOS Keychain
+│   │   ├── SSHClient.swift           # Shout/libssh2 wrapper + ReadOnlyGuard
+│   │   ├── SlurmService.swift        # squeue/sinfo/scontrol/tail logic
+│   │   ├── SlurmParser.swift         # stringly typed → domain models
+│   │   ├── KeychainStore.swift       # credentials → Keychain
 │   │   └── BookmarksStore.swift
-│   ├── Theme/Theme.swift             # Tokyo-Night-Palette + CardStyle
-│   ├── Views/
-│   │   ├── RootView.swift
-│   │   ├── ConnectionSetupView.swift # Erstkonfiguration + Connection-Test
-│   │   ├── MainTabView.swift
-│   │   ├── JobsView.swift
-│   │   ├── JobDetailView.swift
-│   │   ├── GpuMonitorView.swift
-│   │   ├── PartitionsView.swift
-│   │   ├── BookmarksView.swift
-│   │   └── SettingsView.swift        # Connection-Status + SSH-Ping
+│   ├── Theme/Theme.swift             # Tokyo Night palette + CardStyle
+│   ├── Views/                        # JobsView, JobDetailView, BatchActions, …
 │   ├── Resources/Assets.xcassets/
 │   └── Info.plist
 └── SlurmAppTests/
     ├── SlurmParserTests.swift
     ├── ReadOnlyGuardTests.swift
     ├── SSHIntegrationTests.swift
-    └── Fixtures/                     # echte squeue/sinfo/scontrol Outputs von kiz0
+    └── Fixtures/                     # real squeue/sinfo/scontrol output from kiz0
 ```
 
 ## Dependencies
 
-- **libssh2 1.11.x** + **OpenSSL 3.x** — als statische `Vendor/*.xcframework`
-  selbst gebaut (`scripts/build-libssh2-xcframework.sh`), Slices für
-  `macos-arm64_x86_64`, `ios-arm64` (Device) und `ios-arm64_x86_64-simulator`.
-  OpenSSL als Krypto-Backend, damit libssh2 die von kiz0 (OpenSSH 9.x) genutzten
-  Verfahren beherrscht (curve25519-sha256, aes-ctr/gcm, ssh-ed25519-Hostkeys,
-  rsa-sha2-256/512).
-- [Shout](https://github.com/jakeheis/Shout) (MIT) — lokal geforkt nach
-  `Vendor/Shout`: libssh2-Wrapper, dessen `CSSH`-Modul jetzt aus dem xcframework
-  statt aus Homebrew kommt.
-- [BlueSocket](https://github.com/IBM-Swift/BlueSocket) 1.0.x — TCP-Sockets
-  (Shout-Abhängigkeit, baut für iOS wie macOS).
+- **libssh2 1.11.x** + **OpenSSL 3.x** — built from source into static
+  `Vendor/*.xcframework`s (`scripts/build-libssh2-xcframework.sh`), with slices
+  for `macos-arm64_x86_64`, `ios-arm64` (device) and
+  `ios-arm64_x86_64-simulator`. OpenSSL is the crypto backend so that libssh2
+  supports the algorithms kiz0 (OpenSSH 9.x) uses (curve25519-sha256,
+  aes-ctr/gcm, ssh-ed25519 host keys, rsa-sha2-256/512).
+- [Shout](https://github.com/jakeheis/Shout) (MIT) — forked locally into
+  `Vendor/Shout`: a libssh2 wrapper whose `CSSH` module now comes from the
+  xcframework instead of Homebrew.
+- [BlueSocket](https://github.com/IBM-Swift/BlueSocket) 1.0.x — TCP sockets
+  (a Shout dependency, builds for iOS as well as macOS).
 
-## Lizenz
+## License
 
 MIT
