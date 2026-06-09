@@ -8,9 +8,26 @@ struct SlurmApp: App {
     /// der Index wird persistiert. `.large` ist der Default (Index 3).
     @AppStorage("textSizeIndex") private var textSizeIndex: Int = 3
 
+    /// Light/Dark/Auto. Default is `.system` (automatic) — set in Settings.
+    @AppStorage("appearance") private var appearanceRaw: String = AppAppearance.system.rawValue
+    private var appearance: AppAppearance { AppAppearance(rawValue: appearanceRaw) ?? .system }
+
+    /// Selected accent palette. Read here so the whole content tree re-renders
+    /// (and `Theme.accent` re-resolves) the moment the user picks a new theme.
+    @AppStorage(AppTheme.storageKey) private var accentThemeRaw: String = AppTheme.default.rawValue
+    private var accentColor: Color { (AppTheme(rawValue: accentThemeRaw) ?? .default).accent }
+
     private let sizes: [DynamicTypeSize] =
         [.xSmall, .small, .medium, .large, .xLarge, .xxLarge, .xxxLarge]
     private let defaultIndex = 3
+
+    init() {
+        // Load the InjectionIII bundle at launch so live hot reloading works in
+        // Debug on macOS (no-op in Release / when InjectionIII isn't installed).
+        #if DEBUG && os(macOS)
+        loadInjectionBundleIfAvailable()
+        #endif
+    }
 
     private var currentIndex: Int { min(max(textSizeIndex, 0), sizes.count - 1) }
     private func setSize(_ i: Int) { textSizeIndex = min(max(i, 0), sizes.count - 1) }
@@ -19,8 +36,8 @@ struct SlurmApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
-                .preferredColorScheme(.dark)
-                .tint(Theme.accent)
+                .preferredColorScheme(appearance.colorScheme)
+                .tint(accentColor)
                 // Nur überschreiben, wenn der Nutzer per ⌘+/⌘- abgewichen ist —
                 // sonst die System-Textgröße (iOS Dynamic Type) durchlassen.
                 .modifier(TextScale(size: currentIndex == defaultIndex ? nil : sizes[currentIndex]))

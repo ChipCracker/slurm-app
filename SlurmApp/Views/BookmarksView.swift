@@ -8,13 +8,11 @@ struct BookmarksView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 if bookmarks.bookmarks.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "bookmark")
-                            .font(.largeTitle)
-                            .foregroundColor(Theme.textSecondary)
-                        Text("Keine Bookmarks")
-                            .foregroundColor(Theme.textSecondary)
-                    }
+                    SlurmyEmptyState(
+                        title: "Keine Marken",
+                        message: "Markiere Jobs mit dem Lesezeichen – Slurmy hebt sie hier für dich auf.",
+                        mascotWidth: 220
+                    )
                 } else {
                     List {
                         ForEach(bookmarks.bookmarks) { b in

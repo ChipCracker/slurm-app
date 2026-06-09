@@ -26,10 +26,16 @@ enum MainSection: String, CaseIterable, Identifiable, Hashable {
 
 struct MainTabView: View {
     @StateObject private var bookmarks = BookmarksStore()
+    @StateObject private var dashboard = DashboardStore()
+    /// Lebt auf Tab-Ebene, damit Jobs-Daten + Lade-Status den Wechsel zwischen
+    /// Jobs/Marken/Settings überstehen (Cache statt Neuladen).
+    @StateObject private var jobsVM = JobsViewModel()
 
     var body: some View {
         platformRoot
             .environmentObject(bookmarks)
+            .environmentObject(dashboard)
+            .environmentObject(jobsVM)
             .tint(Theme.accent)
     }
 
@@ -75,17 +81,20 @@ private struct MacRootView: View {
     @EnvironmentObject var appState: AppState
     @State private var selection: MainSection? = .jobs
     @FocusState private var sidebarFocused: Bool
+    /// Sidebar starts collapsed for more room — reveal it via the toolbar
+    /// sidebar toggle or the section shortcuts (1/2/3, b, …).
+    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
-                .navigationTitle("Slurm")
+                .navigationTitle("Slurmy")
                 .safeAreaInset(edge: .bottom) { footer }
         } detail: {
             detailView
                 .frame(minWidth: 600, minHeight: 500)
-                .navigationTitle(selection?.label ?? "Slurm")
+                .navigationTitle(selection?.label ?? "Slurmy")
                 .navigationSubtitle(connectionLabel)
         }
         .navigationSplitViewStyle(.balanced)
@@ -131,11 +140,18 @@ private struct MacRootView: View {
         }
         .listStyle(.sidebar)
         .focusable()
+        .focusEffectDisabled()
         .focused($sidebarFocused)
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
+            Image("SlurmyMascot")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 30)
+                .accessibilityHidden(true)
+                .help("Slurmy – die leuchtende Cluster Raupe")
             Circle().fill(statusColor).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
                 Text(appState.connectionStatus.label)

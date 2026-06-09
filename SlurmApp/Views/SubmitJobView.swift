@@ -74,12 +74,12 @@ struct SubmitJobView: View {
             Task { await submit() }
         } label: {
             HStack {
-                if submitting { ProgressView().tint(.black) }
+                if submitting { ProgressView().tint(Theme.onAccent) }
                 Label("Einreichen", systemImage: "paperplane.fill")
             }
             .frame(maxWidth: .infinity).padding(.vertical, 12)
             .background(canSubmit ? Theme.accent : Theme.surfaceElevated)
-            .foregroundColor(canSubmit ? .black : Theme.textSecondary)
+            .foregroundColor(canSubmit ? Theme.onAccent : Theme.textSecondary)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .disabled(!canSubmit || submitting)

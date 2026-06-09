@@ -71,6 +71,21 @@ so saved credentials survive rebuilds. The dev icon is generated from the
 production master by `scripts/make-dev-icon.py` (Python/PIL) — re-run it (or just
 `install.sh dev`) after changing `AppIcon`.
 
+### Hot reloading (Inject)
+
+For live development, **run from Xcode** (Debug = "Slurmy Dev") or use
+`scripts/dev.sh` (`--mock` for UI-only); the installed apps from `install.sh` are
+Release and do **not** hot-reload. `dev.sh` builds Debug from DerivedData with
+hardened runtime off and launches it. The project wires up
+[Inject](https://github.com/krzysztofzablocki/Inject): the `Inject` SPM package
+(no-op in Release), `OTHER_LDFLAGS: -Xlinker -interposable` on the Debug config
+only, and a `View.hotReloadable()` helper (`Theme/HotReload.swift`, wraps
+`@ObserveInjection` + `.enableInjection()`) applied at `RootView`. Live swapping
+also needs the external **InjectionIII** app running with this folder opened. Add
+`.hotReloadable()` as the last `body` modifier of a screen for more reliable
+per-screen reload. Full setup steps are in README → "Day-to-day development &
+hot reloading".
+
 ## Targets & platforms
 
 - `SlurmApp` — universal app, deployment targets **macOS 14.0** and **iOS 26.0**,

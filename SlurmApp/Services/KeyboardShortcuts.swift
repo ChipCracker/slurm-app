@@ -33,6 +33,7 @@ enum Shortcut: String, CaseIterable, Identifiable {
     case bookmarkSelected
     case clearSelection
     case cyclePartition
+    case nodesOverview         // `G` — Knoten-Übersicht (alle Partitionen)
     case editScript
     case openTerminal
     case batchQos          // `p` — QoS der Auswahl ändern
@@ -74,7 +75,7 @@ enum Shortcut: String, CaseIterable, Identifiable {
             return .navigation
         case .refresh, .toggleAllUsers, .toggleAllUsersCmd, .toggleRunningOnly,
              .submitJob, .interactiveSession, .attachSelected, .cancelSelected,
-             .bookmarkSelected, .clearSelection, .cyclePartition,
+             .bookmarkSelected, .clearSelection, .cyclePartition, .nodesOverview,
              .editScript, .openTerminal, .batchQos, .batchPartition:
             return .jobs
         case .prevSortColumn, .prevSortColumnArrow,
@@ -115,6 +116,7 @@ enum Shortcut: String, CaseIterable, Identifiable {
         case .bookmarkSelected:         return "B"
         case .clearSelection:           return .escape
         case .cyclePartition:           return "g"
+        case .nodesOverview:            return "G"   // ⇧G
         case .editScript:               return "e"
         case .openTerminal:             return "t"
         case .batchQos:                 return "p"
@@ -147,7 +149,7 @@ enum Shortcut: String, CaseIterable, Identifiable {
         case .focusSidebar:                                 return [.command]
         case .toggleAllUsersCmd:                            return [.command, .shift]
         case .cancelSelected, .bookmarkSelected,
-             .copyActiveLog, .batchPartition:               return [.shift]
+             .copyActiveLog, .batchPartition, .nodesOverview: return [.shift]
         case .cursorTopCmd, .cursorBottomCmd:              return [.command]
         default:                                            return []
         }
@@ -223,6 +225,7 @@ enum Shortcut: String, CaseIterable, Identifiable {
         case .bookmarkSelected:     return "Job bookmarken"
         case .clearSelection:       return "Auswahl / Modal schliessen"
         case .cyclePartition:       return "Nächste Partition (Sheet)"
+        case .nodesOverview:        return "Knoten-Übersicht (alle Partitionen)"
         case .editScript:           return "Skript editieren (Terminal)"
         case .openTerminal:         return "SSH-Shell in Terminal"
         case .batchQos:             return "QoS ändern (Auswahl)"

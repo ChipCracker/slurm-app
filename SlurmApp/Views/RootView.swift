@@ -8,10 +8,16 @@ struct RootView: View {
             switch appState.connectionStatus {
             case .connected:
                 MainTabView()
+            case .connecting:
+                ZStack {
+                    Theme.background.ignoresSafeArea()
+                    SlurmyLoadingState(caption: "Verbinde mit dem Cluster…")
+                }
             default:
                 ConnectionSetupView()
             }
         }
         .background(Theme.background.ignoresSafeArea())
+        .hotReloadable()
     }
 }
