@@ -25,7 +25,15 @@ class Session {
             libssh2_session_set_blocking(cSession, newValue)
         }
     }
-    
+
+    /// Milliseconds a blocking libssh2 call may wait before returning
+    /// LIBSSH2_ERROR_TIMEOUT. 0 (default) = wait forever. Used to keep a stalled
+    /// network read from hanging the SSH queue indefinitely.
+    var timeout: Int {
+        get { libssh2_session_get_timeout(cSession) }
+        set { libssh2_session_set_timeout(cSession, newValue) }
+    }
+
     init() throws {
         guard Session.initResult == 0 else {
             throw SSHError.genericError("libssh2_init failed")

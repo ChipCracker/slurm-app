@@ -109,7 +109,7 @@ struct InteractiveSessionView: View {
             Label("In Terminal öffnen", systemImage: "terminal")
                 .frame(maxWidth: .infinity).padding(.vertical, 12)
                 .background(Theme.accent)
-                .foregroundColor(.black)
+                .foregroundColor(Theme.onAccent)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)

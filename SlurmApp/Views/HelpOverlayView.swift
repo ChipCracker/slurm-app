@@ -9,7 +9,7 @@ struct HelpOverlayView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().background(.white.opacity(0.08))
+            Divider().background(Theme.hairline)
             ScrollView {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 340, maximum: 540), spacing: 16, alignment: .top)],
@@ -81,7 +81,7 @@ struct HelpOverlayView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.white.opacity(0.08), lineWidth: 0.5)
+                .stroke(Theme.hairline, lineWidth: 0.5)
         )
     }
 

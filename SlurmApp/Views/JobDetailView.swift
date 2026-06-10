@@ -32,6 +32,10 @@ final class JobDetailViewModel: ObservableObject {
     @Published var liveError: String?
     @Published var loading = false
     @Published var initialLoadDone: Bool = false
+    /// Per-section load flags so a slow log tail or batch-script fetch only
+    /// shimmers its own card instead of holding the whole detail in skeleton.
+    @Published var logsLoaded: Bool = false
+    @Published var scriptLoaded: Bool = false
     @Published var error: String?
     @Published var followMode: Bool = false
     @Published var availableQos: [String] = []
@@ -45,26 +49,40 @@ final class JobDetailViewModel: ObservableObject {
     func bind(_ s: AppState) { self.appState = s }
 
     func load() async {
+        // Always settle the skeleton state, even on an early exit — otherwise a
+        // detail pane opened while disconnected would shimmer forever.
+        defer {
+            if !initialLoadDone {
+                withAnimation(.smooth(duration: 0.4)) { initialLoadDone = true }
+            }
+        }
         guard let slurm = appState?.slurm else { return }
         loading = true; defer { loading = false }
         do {
             let details = try await slurm.fetchJobDetails(job.jobId)
             self.details = details
-            self.script = (try? await slurm.fetchBatchScript(job.jobId)) ?? ""
-            self.availableQos = (try? await slurm.fetchAvailableQos()) ?? []
-            self.availablePartitions = (try? await slurm.fetchAvailablePartitions()) ?? []
             self.error = nil
         } catch {
             self.error = error.localizedDescription
         }
-        // Always try the logs — even when scontrol show job throws, we'd
-        // rather render an "(no log path)" card than a missing one.
-        await refreshLogs()
+        // Core details are in → dismiss the stats-grid skeletons immediately.
+        // Everything below is independent: each card owns its loading flag so a
+        // slow/stuck command on the shared, serialized SSH link can't keep the
+        // whole detail shimmering forever.
         if !initialLoadDone {
-            withAnimation(.smooth(duration: 0.4)) {
-                initialLoadDone = true
-            }
+            withAnimation(.smooth(duration: 0.4)) { initialLoadDone = true }
         }
+
+        // Logs use the paths from `details`; render an "(no log path)" card
+        // rather than a missing one even when scontrol show job throws.
+        await refreshLogs()
+        logsLoaded = true
+
+        self.script = (try? await slurm.fetchBatchScript(job.jobId)) ?? ""
+        scriptLoaded = true
+
+        self.availableQos = (try? await slurm.fetchAvailableQos()) ?? []
+        self.availablePartitions = (try? await slurm.fetchAvailablePartitions()) ?? []
     }
 
     func updateQos(_ newQos: String) async -> String? {
@@ -148,6 +166,7 @@ struct JobDetailView: View {
     @StateObject private var vm: JobDetailViewModel
     @State private var showCancelConfirm = false
     @State private var actionMessage: String?
+    @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -174,25 +193,24 @@ struct JobDetailView: View {
     }
 
     var body: some View {
-        let pending = !vm.initialLoadDone
-        return ZStack {
+        ZStack {
             Theme.background.ignoresSafeArea()
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         header.id("header")
                         statsGrid
-                        if isOwnJob && vm.job.isRunning {
+                        if showsLiveGpu {
                             liveStatsCard.id("liveGpu")
                         }
-                        scriptSection(initialLoading: pending)
+                        scriptSection(initialLoading: !vm.scriptLoaded)
                         logSection(
                             title: "stderr", body: vm.stderr, color: Theme.danger,
-                            initialLoading: pending
+                            initialLoading: !vm.logsLoaded
                         )
                         logSection(
                             title: "stdout", body: vm.stdout, color: Theme.success,
-                            initialLoading: pending
+                            initialLoading: !vm.logsLoaded
                         ).id("logs")
                         if let msg = actionMessage {
                             ErrorBanner(message: msg, tint: Theme.warning)
@@ -210,15 +228,21 @@ struct JobDetailView: View {
         .task {
             vm.bind(appState)
             await vm.load()
-            // Periodic log + GPU stat refresh while the view lives. GPU stats
-            // only run for the current user's running jobs — srun --overlap on
-            // a foreign job will be rejected by Slurm anyway, and we don't
-            // want to spam the cluster with that.
+            // Kick off the first GPU fetch right away so the live card settles
+            // instead of shimmering for a full refresh cycle before any data.
+            if showsLiveGpu { await vm.refreshLiveStats() }
+        }
+        // Periodic log + GPU stat refresh — only while the window is in the
+        // foreground (no srun/nvidia-smi every 5s when hidden). GPU stats only
+        // run for the current user's running, GPU-bearing jobs.
+        .task(id: scenePhase) {
+            vm.bind(appState)
+            guard scenePhase == .active else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
                 if Task.isCancelled { break }
                 if vm.followMode { await vm.refreshLogs() }
-                if isOwnJob && vm.job.isRunning { await vm.refreshLiveStats() }
+                if showsLiveGpu { await vm.refreshLiveStats() }
             }
         }
         .alert("Job abbrechen?", isPresented: $showCancelConfirm) {
@@ -249,6 +273,11 @@ struct JobDetailView: View {
                 Circle().fill(Theme.stateColor(vm.job.state)).frame(width: 10, height: 10)
                 Text(vm.job.jobId).font(.system(.title3, design: .monospaced).weight(.bold))
                     .foregroundColor(Theme.textPrimary)
+                    .textSelection(.enabled)
+                    .contextMenu {
+                        Button("Job-ID kopieren") { Clipboard.copy(vm.job.jobId) }
+                        Button("Name kopieren") { Clipboard.copy(vm.job.name) }
+                    }
                 Spacer()
                 Text(vm.job.state).font(.caption.bold()).foregroundColor(Theme.stateColor(vm.job.state))
                 Button {
@@ -263,6 +292,8 @@ struct JobDetailView: View {
                 .help("Job als Bookmark speichern")
             }
             Text(vm.job.name).font(.title2).foregroundColor(Theme.textPrimary)
+                .textSelection(.enabled)
+                .contextMenu { Button("Name kopieren") { Clipboard.copy(vm.job.name) } }
             HStack(spacing: 8) {
                 pillOrPicker(
                     label: vm.job.partition,
@@ -278,7 +309,7 @@ struct JobDetailView: View {
                 }
                 pillOrPicker(
                     label: "QoS \(vm.job.qos)",
-                    color: Theme.purple,
+                    color: Theme.qosColor(vm.job.qos),
                     editable: isOwnJob && (vm.job.isRunning || vm.job.isPending),
                     options: vm.availableQos,
                     currentValue: vm.job.qos
@@ -418,23 +449,42 @@ struct JobDetailView: View {
     }
 
     private var liveStatsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "cpu").foregroundColor(Theme.purple)
-                Text("Live GPU Stats")
-                    .font(.headline).foregroundColor(Theme.textPrimary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.purple.opacity(0.18))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "cpu.fill")
+                        .font(.title3)
+                        .foregroundColor(Theme.purple)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Live GPU Stats")
+                        .font(.title3.bold())
+                        .foregroundColor(Theme.textPrimary)
+                    Text("nvidia-smi via srun --overlap")
+                        .font(.caption2.monospaced())
+                        .foregroundColor(Theme.textSecondary)
+                }
                 Spacer()
-                Text("5s auto-refresh").font(.caption2).foregroundColor(Theme.textSecondary)
+                HStack(spacing: 5) {
+                    Circle().fill(Theme.success).frame(width: 7, height: 7)
+                    Text("5s")
+                        .font(.caption2.bold().monospacedDigit())
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Theme.surfaceElevated)
+                .clipShape(Capsule())
             }
             Group {
                 if let err = vm.liveError {
-                    Text(err)
-                        .font(.caption.monospaced())
-                        .foregroundColor(Theme.danger)
-                        .lineLimit(3)
+                    ErrorBanner(message: err)
+                        .font(.callout.monospaced())
                         .transition(.opacity)
                 } else if vm.gpuStats.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 10) {
                         ForEach(Self.skeletonGpuStats) { stat in
                             gpuRow(stat)
                         }
@@ -443,17 +493,34 @@ struct JobDetailView: View {
                     .shimmering()
                     .transition(.opacity)
                 } else {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 10) {
                         ForEach(vm.gpuStats) { stat in
                             gpuRow(stat)
                         }
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.99)))
+                    // Animate value changes on each 5s refresh: bars glide to
+                    // the new util/mem, numbers roll (see .contentTransition).
+                    .animation(.smooth(duration: 0.5), value: vm.gpuStats)
                 }
             }
             .animation(.smooth(duration: 0.4), value: vm.gpuStats.isEmpty)
         }
-        .cardStyle()
+        .padding(18)
+        .background(
+            ZStack {
+                Theme.surface
+                LinearGradient(
+                    colors: [Theme.purple.opacity(0.12), Theme.accent.opacity(0.05)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Theme.purple.opacity(0.35), lineWidth: 1)
+        )
     }
 
     private static let skeletonGpuStats: [GpuStat] = (0..<2).map { i in
@@ -470,26 +537,32 @@ struct JobDetailView: View {
     }
 
     private func gpuRow(_ stat: GpuStat) -> some View {
-        let utilColor = Theme.utilizationColor(Double(stat.utilizationPercent) / 100)
-        let memColor  = Theme.utilizationColor(stat.memoryRatio)
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        // GPU live stats: full utilisation is good (efficient) → green; low is
+        // neutral grey, not an alarm. (See Theme.gpuUtilColor.)
+        let utilColor = Theme.gpuUtilColor(Double(stat.utilizationPercent) / 100)
+        let memColor  = Theme.gpuUtilColor(stat.memoryRatio)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
                 Text("GPU \(stat.index)")
-                    .font(.caption.bold().monospaced())
+                    .font(.callout.bold().monospaced())
                     .foregroundColor(Theme.textPrimary)
                 Text(stat.name)
-                    .font(.caption2.monospaced())
+                    .font(.caption.monospaced())
                     .foregroundColor(Theme.textSecondary)
                     .lineLimit(1)
                 Spacer()
-                Text("\(stat.temperatureC)°C")
-                    .font(.caption2.monospacedDigit())
+                Label("\(stat.temperatureC)°C", systemImage: "thermometer.medium")
+                    .font(.caption.monospacedDigit())
+                    .labelStyle(.titleAndIcon)
+                    .contentTransition(.numericText())
                     .foregroundColor(stat.temperatureC > 75 ? Theme.danger : Theme.textSecondary)
-                Text(String(format: "%.0fW", stat.powerDrawW))
-                    .font(.caption2.monospacedDigit())
+                Label(String(format: "%.0fW", stat.powerDrawW), systemImage: "bolt.fill")
+                    .font(.caption.monospacedDigit())
+                    .labelStyle(.titleAndIcon)
+                    .contentTransition(.numericText())
                     .foregroundColor(Theme.textSecondary)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 metricBar(label: "util", value: "\(stat.utilizationPercent)%",
                           ratio: Double(stat.utilizationPercent) / 100, color: utilColor)
                 metricBar(
@@ -500,27 +573,32 @@ struct JobDetailView: View {
                 )
             }
         }
-        .padding(8)
+        .padding(12)
         .background(Theme.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private func metricBar(label: String, value: String, ratio: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(label).font(.caption2).foregroundColor(Theme.textSecondary)
+                Text(label.uppercased())
+                    .font(.caption2.bold())
+                    .foregroundColor(Theme.textSecondary)
                 Spacer()
-                Text(value).font(.caption2.monospacedDigit()).foregroundColor(Theme.textPrimary)
+                Text(value)
+                    .font(.caption.monospacedDigit().bold())
+                    .foregroundColor(Theme.textPrimary)
+                    .contentTransition(.numericText())
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2).fill(Theme.background.opacity(0.6))
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 4).fill(Theme.background.opacity(0.6))
+                    RoundedRectangle(cornerRadius: 4)
                         .fill(color)
-                        .frame(width: max(2, CGFloat(min(1, max(0, ratio))) * geo.size.width))
+                        .frame(width: max(3, CGFloat(min(1, max(0, ratio))) * geo.size.width))
                 }
             }
-            .frame(height: 4)
+            .frame(height: 9)
         }
     }
 
@@ -797,6 +875,13 @@ struct JobDetailView: View {
         return vm.job.user == me
     }
 
+    /// Whether to show & poll the Live GPU Stats card. Only own, running jobs
+    /// that actually requested GPUs — otherwise `srun --overlap nvidia-smi`
+    /// lands on a GPU-less node and fails with "No devices were found".
+    private var showsLiveGpu: Bool {
+        isOwnJob && vm.job.isRunning && vm.job.gpus > 0
+    }
+
     private func cancel() async {
         guard let slurm = appState.slurm else { return }
         do {
@@ -838,7 +923,7 @@ struct LogDetailSheetView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().background(.white.opacity(0.08))
+            Divider().background(Theme.hairline)
             logBody
         }
         .background(

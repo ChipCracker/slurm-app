@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit   // NSCursor for the resizable divider (macOS)
+#endif
 
 @MainActor
 final class JobsViewModel: ObservableObject {
@@ -16,7 +19,39 @@ final class JobsViewModel: ObservableObject {
     @Published var runningOnly: Bool = false
     @Published var search: String = ""
     @Published var initialFetchDone: Bool = false
+    /// Per-resource in-flight flags so each slow stats card shimmers until ITS
+    /// own data lands — the job list (and `initialFetchDone`) finishes much
+    /// earlier and must not stop these from showing a loading state.
+    @Published var hoursLoading: Bool = true
+    @Published var quotasLoading: Bool = true
     private var lastHoursFetch: Date = .distantPast
+    private var lastQuotaFetch: Date = .distantPast
+    /// GPU hours come from a heavy `sreport` over a year of accounting — they
+    /// barely move within half an hour. Auto-refresh at most this often; the
+    /// ranking is cached to disk in between (and can be refreshed manually).
+    static let hoursRefreshInterval: TimeInterval = 1800   // 30 min
+
+    init() { loadHoursCache(); loadQuotaCache() }
+    /// When each partition's nodes/details were last fetched — used to skip a
+    /// re-fetch when the same partition is re-opened within `partitionCacheTTL`.
+    private var lastPartitionFetch: [String: Date] = [:]
+    static let partitionCacheTTL: TimeInterval = 45
+    /// Zeitpunkt des letzten erfolgreichen Voll-Refresh. Erlaubt es, beim
+    /// Wiederauftauchen der Ansicht (Sektionswechsel) den Cache zu zeigen,
+    /// statt erneut per SSH zu laden, solange die Daten frisch sind.
+    private(set) var lastFullRefresh: Date = .distantPast
+    var isStale: Bool { Date().timeIntervalSince(lastFullRefresh) > 10 }
+    /// Been away long enough that the SSH link probably died (sleep/background)
+    /// — used to proactively reconnect on foreground instead of hanging on a
+    /// half-open socket until the timeout.
+    var connectionMaybeStale: Bool { Date().timeIntervalSince(lastFullRefresh) > 30 }
+
+    // Persistierte UI-Auswahl + Sortierung, damit sie einen Sektionswechsel
+    // überleben (JobsView wird dabei neu aufgebaut). Bewusst kein @Published:
+    // reines Speichern, das keinen Re-Render auslösen soll.
+    var savedCursor: Job.ID?
+    var savedMarked: Set<Job.ID> = []
+    var savedSortOrder: [KeyPathComparator<Job>]?
 
     private weak var appState: AppState?
 
@@ -24,13 +59,23 @@ final class JobsViewModel: ObservableObject {
 
     /// Fetch (and cache) details + node list for one partition. Cheap — used
     /// when the user expands a partition in the Inspector's GPU-allocation
-    /// strip. Re-fetches each time so the node states stay live.
-    func loadPartition(_ name: String) async {
+    /// Fetch (and cache) details + node list for one partition. Skips the SSH
+    /// round-trip when the same partition was fetched within `partitionCacheTTL`
+    /// (re-opening the sheet repeatedly doesn't re-run sinfo each time); the
+    /// sheet's refresh button passes `force: true` for live node states.
+    func loadPartition(_ name: String, force: Bool = false) async {
         guard let slurm = appState?.slurm else { return }
+        if !force,
+           partitionNodes[name] != nil,
+           let last = lastPartitionFetch[name],
+           Date().timeIntervalSince(last) < Self.partitionCacheTTL {
+            return   // fresh enough — serve cache
+        }
         async let d: [String: String]? = try? await slurm.fetchPartitionDetails(name)
         async let n: [PartitionNode]?  = try? await slurm.fetchPartitionNodes(name)
         if let nodes = await n  { self.partitionNodes[name] = nodes }
         if let det   = await d  { self.partitionDetails[name] = det }
+        lastPartitionFetch[name] = Date()
     }
 
     /// Jobs visible in the table after applying the user filter.
@@ -65,32 +110,109 @@ final class JobsViewModel: ObservableObject {
                 .computeUsage(jobs: jobsList, partitions: parts, currentUser: me)
                 .sorted { $0.partition < $1.partition }
             self.error = nil
+            self.lastFullRefresh = Date()
         } catch {
             self.error = error.localizedDescription
         }
 
-        // GPU hours + disk quotas change slowly — refresh at most every 5 min,
-        // but kick off the first fetch eagerly so the cards aren't empty
-        // on first paint.
-        let now = Date()
-        if gpuHours.isEmpty || now.timeIntervalSince(lastHoursFetch) > 300 {
-            lastHoursFetch = now
-            if let hours = try? await slurm.fetchGpuHours(topN: 10) {
-                self.gpuHours = hours
-            }
-            if let q = try? await slurm.fetchDiskQuotas() {
-                self.diskQuotas = q
-            }
-        }
-
-        // Flip the initial-load flag after the first complete refresh so the
-        // skeleton placeholders stop rendering even if the cluster genuinely
-        // returns empty lists. The crossfade is provided by `.animation(...)`
-        // modifiers on the table and the inspector cards themselves — using
-        // `withAnimation` here would propagate the transaction into the
-        // detail pane and re-fire the `JobDetailView` initial-load animation.
+        // Jobs + partitions are in → stop the table skeleton NOW, before the
+        // slow cluster stats below. Otherwise an empty own-job list (or a slow
+        // `sreport`) would keep the job list shimmering "forever" on first open.
+        // The inspector's GPU-hours/quota cards have their own loading states,
+        // so they can finish independently. No `withAnimation` here — that would
+        // leak the transaction into the detail pane and re-fire its load anim.
         if !initialFetchDone {
             initialFetchDone = true
+        }
+
+        // Slow cluster stats — independent cadences and their own loading flags
+        // so each card shimmers until ITS data lands. GPU hours barely change,
+        // so they ride a long (30 min) cache window; disk quotas move faster.
+        let now = Date()
+        if gpuHours.isEmpty || now.timeIntervalSince(lastHoursFetch) > Self.hoursRefreshInterval {
+            await reloadGpuHours()
+        }
+        if diskQuotas.isEmpty || now.timeIntervalSince(lastQuotaFetch) > 300 {
+            await reloadDiskQuotas()
+        }
+    }
+
+    /// (Re)load the GPU-hours ranking and refresh the on-disk cache. Called on
+    /// the 30-min cadence from `refresh()` and directly by the card's manual
+    /// refresh button (which always forces a fresh `sreport`).
+    func reloadGpuHours() async {
+        guard let slurm = appState?.slurm else { return }
+        hoursLoading = true
+        defer { hoursLoading = false }
+        if let hours = try? await slurm.fetchGpuHours(topN: 10) {
+            self.gpuHours = hours
+            self.lastHoursFetch = Date()
+            persistHoursCache()
+        }
+    }
+
+    /// (Re)load disk quotas. Cheaper than sreport; 5-min cadence from
+    /// `refresh()`, or on demand.
+    func reloadDiskQuotas() async {
+        guard let slurm = appState?.slurm else { return }
+        quotasLoading = true
+        defer { quotasLoading = false }
+        if let q = try? await slurm.fetchDiskQuotas() {
+            self.diskQuotas = q
+            self.lastQuotaFetch = Date()
+            persistQuotaCache()
+        }
+    }
+
+    // MARK: – GPU-hours disk cache (survives app restarts so the 30-min window
+    // is honoured across launches instead of re-running sreport every time).
+
+    private static let hoursCacheKey = "gpuHoursCache.v1"
+
+    private struct HoursCache: Codable {
+        let entries: [GpuHoursEntry]
+        let fetchedAt: Date
+    }
+
+    private func loadHoursCache() {
+        guard let data = UserDefaults.standard.data(forKey: Self.hoursCacheKey),
+              let cache = try? JSONDecoder().decode(HoursCache.self, from: data),
+              !cache.entries.isEmpty else { return }
+        gpuHours = cache.entries
+        lastHoursFetch = cache.fetchedAt
+        hoursLoading = false   // show cached data immediately, no shimmer
+    }
+
+    private func persistHoursCache() {
+        let cache = HoursCache(entries: gpuHours, fetchedAt: lastHoursFetch)
+        if let data = try? JSONEncoder().encode(cache) {
+            UserDefaults.standard.set(data, forKey: Self.hoursCacheKey)
+        }
+    }
+
+    // MARK: – Disk-quota disk cache (survives restarts; 5-min window honoured
+    // across launches instead of re-running the quota command every time).
+
+    private static let quotaCacheKey = "diskQuotaCache.v1"
+
+    private struct QuotaCache: Codable {
+        let quotas: [DiskQuota]
+        let fetchedAt: Date
+    }
+
+    private func loadQuotaCache() {
+        guard let data = UserDefaults.standard.data(forKey: Self.quotaCacheKey),
+              let cache = try? JSONDecoder().decode(QuotaCache.self, from: data),
+              !cache.quotas.isEmpty else { return }
+        diskQuotas = cache.quotas
+        lastQuotaFetch = cache.fetchedAt
+        quotasLoading = false
+    }
+
+    private func persistQuotaCache() {
+        let cache = QuotaCache(quotas: diskQuotas, fetchedAt: lastQuotaFetch)
+        if let data = try? JSONEncoder().encode(cache) {
+            UserDefaults.standard.set(data, forKey: Self.quotaCacheKey)
         }
     }
 
@@ -104,6 +226,8 @@ final class JobsViewModel: ObservableObject {
         gpuHours = Self.mockGpuHours
         diskQuotas = Self.mockDiskQuotas
         initialFetchDone = true
+        hoursLoading = false
+        quotasLoading = false
         return true
     }
 
@@ -170,7 +294,21 @@ final class JobsViewModel: ObservableObject {
 struct JobsView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var bookmarks: BookmarksStore
-    @StateObject private var vm = JobsViewModel()
+    @EnvironmentObject var dashboard: DashboardStore
+    /// In `MainTabView` erzeugt und injiziert, damit Daten + Lade-Status einen
+    /// Sektionswechsel überleben (sonst Neuaufbau → SSH-Neuladen).
+    @EnvironmentObject var vm: JobsViewModel
+    /// Konfigurierbares Grid-Dashboard statt der klassischen Ansicht.
+    /// macOS: Alternative zum Split-View. iPad (regular width): Alternative zur
+    /// gepushten Detail-Navigation. iPhone (compact): ignoriert (feste Liste).
+    @AppStorage("jobsDashboardEnabled") private var dashboardEnabled = false
+    /// Edit-Modus: Widgets verschieben/skalieren.
+    @State private var editingDashboard = false
+    /// Laufende Jobs immer oben einsortieren (unabhängig von der Spaltensortierung).
+    @AppStorage("runningJobsFirst") private var runningJobsFirst = false
+    /// Einmalige Wiederherstellung von Auswahl/Sortierung pro View-Instanz.
+    @State private var didRestore = false
+    @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -186,6 +324,7 @@ struct JobsView: View {
     @State private var showInteractive = false
     @State private var sheetPartition: PartitionSelection?
     @State private var showGpuHoursSheet: Bool = false
+    @State private var showNodesSheet: Bool = false
     @State private var showHelp: Bool = false
     /// Full-size log modal raised from the detail pane (click or Space).
     /// Holds the live JobDetailViewModel so it streams in Follow-mode.
@@ -257,9 +396,11 @@ struct JobsView: View {
             .glassModal(item: $sheetPartition) { partitionSheet($0) }
             .glassModal(isPresented: $showGpuHoursSheet) { gpuHoursSheet }
         }
+        .glassModal(isPresented: $showNodesSheet) { nodesSheet }
         #else
         .glassModal(item: $sheetPartition) { partitionSheet($0) }
         .glassModal(isPresented: $showGpuHoursSheet) { gpuHoursSheet }
+        .glassModal(isPresented: $showNodesSheet) { nodesSheet }
         #endif
         .glassModal(isPresented: $showHelp, maxWidth: .infinity, maxHeight: .infinity) {
             HelpOverlayView()
@@ -348,9 +489,29 @@ struct JobsView: View {
             }
             #endif
             vm.bind(appState)
-            await vm.refresh()
+            // Beim (erneuten) Erscheinen nur laden, wenn noch nie geladen wurde
+            // oder die Daten veraltet sind — sonst zeigt die Tabelle sofort den
+            // Cache. Das Polling läuft in der scenePhase-Task unten.
+            if !vm.initialFetchDone || vm.isStale {
+                await vm.refresh()
+            }
             // Auto-focus the table so arrow keys work from the first frame.
             focusedPane = .table
+        }
+        // Poll squeue/sinfo every 10s — but ONLY while the window is in the
+        // foreground. Keyed on scenePhase: leaving the foreground cancels the
+        // loop (no SSH while hidden/inactive), returning restarts it with an
+        // immediate catch-up refresh if the cache went stale.
+        .task(id: scenePhase) {
+            vm.bind(appState)
+            guard scenePhase == .active else { return }
+            // Returned to the foreground after a while → the SSH link may be
+            // dead. Rebuild it first so the catch-up refresh is instant instead
+            // of blocking on a half-open socket until the 45s timeout.
+            if vm.initialFetchDone && vm.connectionMaybeStale {
+                await appState.slurm?.reconnect()
+            }
+            if vm.initialFetchDone && vm.isStale { await vm.refresh() }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 10 * 1_000_000_000)
                 if Task.isCancelled { break }
@@ -400,6 +561,8 @@ struct JobsView: View {
             }
         }
         .onChange(of: cursor) { oldValue, newValue in
+            // Auswahl für den nächsten Ansichtswechsel merken.
+            vm.savedCursor = newValue
             // A log modal belongs to one job's detail pane — if the selection
             // moves (or clears), drop it so it can't show a stale job's log.
             if oldValue != newValue, logModal != nil { logModal = nil }
@@ -423,6 +586,32 @@ struct JobsView: View {
         .onChange(of: vm.runningOnly) { _, _ in ensureCursor() }
         .onChange(of: vm.allUsers)    { _, _ in ensureCursor() }
         .onChange(of: vm.search)      { _, _ in ensureCursor() }
+        .onChange(of: marked)         { _, m in vm.savedMarked = m }
+        .onChange(of: sortOrder)      { _, s in vm.savedSortOrder = s }
+        .onAppear { restoreSelection() }
+    }
+
+    /// Stellt Auswahl + Sortierung aus dem persistenten ViewModel wieder her —
+    /// einmal pro View-Instanz, damit ein Sektionswechsel den Zustand behält.
+    private func restoreSelection() {
+        guard !didRestore else { return }
+        didRestore = true
+        if !vm.savedMarked.isEmpty { marked = vm.savedMarked }
+        if let s = vm.savedSortOrder { sortOrder = s }
+        #if os(macOS)
+        // Cursor nur auf macOS wiederherstellen — auf iOS würde ein gesetzter
+        // Cursor sofort die Detail-Navigation pushen.
+        if let c = vm.savedCursor { cursor = c }
+        #endif
+    }
+
+    /// Scrollt die Tabelle zur aktuell gewählten Zeile (Scroll-Zustand nach
+    /// Ansichtswechsel). Kleiner Aufschub, damit die Zeilen schon stehen.
+    private func scrollToCursor(_ proxy: ScrollViewProxy) {
+        guard let id = cursor else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            proxy.scrollTo(id, anchor: .center)
+        }
     }
 
     // MARK: – Plattform-Layout
@@ -433,23 +622,11 @@ struct JobsView: View {
     @ViewBuilder
     private var paneLayout: some View {
         #if os(macOS)
-        HSplitView {
-            // Tabelle und Detail teilen sich die Breite 50/50 (gleiche flexible
-            // Frames) — die Detailansicht nimmt per Default die halbe Breite ein.
-            leadingPane
-                .frame(minWidth: 380, idealWidth: 520, maxWidth: .infinity)
-                .paneFocusRing(focusedPane == .table)
-            detailPane
-                .frame(minWidth: 380, idealWidth: 520, maxWidth: .infinity)
-                .focusable()
-                .focused($focusedPane, equals: .detail)
-                .paneFocusRing(focusedPane == .detail)
-            if inspectorOpen {
-                inspectorPane
-                    .frame(minWidth: 280, idealWidth: 320)
-                    .focusable()
-                    .focused($focusedPane, equals: .inspector)
-                    .paneFocusRing(focusedPane == .inspector)
+        Group {
+            if dashboardEnabled {
+                dashboardLayout
+            } else {
+                splitLayout
             }
         }
         .background(Theme.background)
@@ -457,7 +634,15 @@ struct JobsView: View {
         .searchable(text: $vm.search, prompt: "Suche Job, User, Partition, Status")
         #else
         NavigationStack {
-            leadingPane
+            Group {
+                // iPad (regular width) + Dashboard: das Grid ersetzt die
+                // gepushte Detail-Navigation — das Detail ist ein eigenes Widget.
+                if iPadDashboardActive {
+                    dashboardLayout
+                } else {
+                    leadingPane
+                }
+            }
                 .background(Theme.background)
                 .navigationTitle("Jobs")
                 .inlineNavTitle()
@@ -475,6 +660,147 @@ struct JobsView: View {
         }
         #endif
     }
+
+    #if os(macOS)
+    /// Klassische Drei-Spalten-Ansicht (Tabelle | Detail | Inspector) mit
+    /// ziehbaren Trennern — der bewährte Default ohne Grid-Engine.
+    private var splitLayout: some View {
+        // The panes are built here ONCE per render and handed to the split
+        // containers as values; the containers own the divider state, so a drag
+        // re-applies frames without rebuilding the (heavy) jobs Table. See
+        // ResizableSplits.swift.
+        ResizableHSplit2(showRight: inspectorOpen, defaultRight: 380, minLeft: 460) {
+            ResizableVSplit2(
+                autoTopHeight: tableContentHeight(rows: vm.filtered().count),
+                minTop: Self.leftMinTop,
+                minBottom: Self.leftMinBottom
+            ) {
+                leadingPane
+                    .paneFocusRing(focusedPane == .table)
+            } bottom: {
+                detailPane
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($focusedPane, equals: .detail)
+                    .paneFocusRing(focusedPane == .detail)
+            }
+        } right: {
+            ResizableVSplit3 {
+                gpuAllocationCardView
+            } b: {
+                diskQuotasCardView
+            } c: {
+                gpuHoursCardView
+            }
+            .background(Theme.background)
+            .focusable()
+            .focusEffectDisabled()
+            .focused($focusedPane, equals: .inspector)
+            .paneFocusRing(focusedPane == .inspector)
+        }
+    }
+
+    private static let leftMinTop: CGFloat = 140
+    private static let leftMinBottom: CGFloat = 170
+
+    /// Estimated height of the jobs table at `rows` rows (filter bar + header +
+    /// rows). Used to cap the table to its content so a short list leaves no
+    /// whitespace under it.
+    private func tableContentHeight(rows: Int) -> CGFloat {
+        let filterBar: CGFloat = 42
+        let header: CGFloat = 30
+        let rowH: CGFloat = 20
+        return filterBar + header + CGFloat(max(1, rows)) * rowH + 12
+    }
+
+    #endif
+
+    /// Konfigurierbares Grid: jedes Panel ist ein Widget, im Edit-Modus frei
+    /// verschieb- und skalierbar. Inhalt kommt aus `dashboardWidgetView`.
+    private var dashboardLayout: some View {
+        DashboardGridView(store: dashboard, editing: editingDashboard) { widget in
+            dashboardWidgetView(widget)
+        }
+    }
+
+    @ViewBuilder
+    private func dashboardWidgetView(_ widget: DashboardWidget) -> some View {
+        switch widget {
+        case .jobs:
+            jobsWidget
+        case .detail:
+            detailPane
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        case .gpuAllocation:
+            clusterCard {
+                GpuAllocationStrip(
+                    usage: vm.gpuUsage,
+                    isLoading: !vm.initialFetchDone,
+                    focusedPartition: nil
+                ) { name in
+                    sheetPartition = PartitionSelection(name: name)
+                    Task { await vm.loadPartition(name) }
+                }
+            }
+        case .diskQuotas:
+            clusterCard {
+                DiskQuotasCard(quotas: vm.diskQuotas, isLoading: vm.quotasLoading)
+            }
+        case .gpuHours:
+            clusterCard {
+                GpuHoursCard(
+                    entries: vm.gpuHours,
+                    currentUser: appState.credentials?.username,
+                    isLoading: vm.hoursLoading,
+                    isFocused: false,
+                    onOpenFullView: { showGpuHoursSheet = true },
+                    onRefresh: { Task { await vm.reloadGpuHours() } }
+                )
+            }
+        }
+    }
+
+    /// Jobs-Widget: Filterleiste + Tabelle (die `table`-View bringt ihren
+    /// eigenen `.focused(.table)` mit, daher hier kein zweiter Fokus).
+    private var jobsWidget: some View {
+        VStack(spacing: 0) {
+            filterBar
+            if let err = vm.error {
+                ErrorBanner(message: err)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+            }
+            table
+        }
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func clusterCard<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        ScrollView { content().padding(12) }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Theme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    #if os(macOS)
+    /// Compact "own ↔ all users" switch with a person icon on each side; the
+    /// active side glows in the accent. Flipping it animates the list update.
+    private var allUsersToggle: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "person.fill")
+                .foregroundColor(vm.allUsers ? Theme.textSecondary : Theme.accent)
+            Toggle("", isOn: $vm.allUsers.animation(.smooth(duration: 0.3)))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+            Image(systemName: "person.3.fill")
+                .foregroundColor(vm.allUsers ? Theme.accent : Theme.textSecondary)
+        }
+        .font(.caption)
+        .help("Eigene Jobs ↔ alle Nutzer (u)")
+    }
+    #endif
 
     @ToolbarContentBuilder
     private var jobsToolbar: some ToolbarContent {
@@ -503,12 +829,22 @@ struct JobsView: View {
                 Button { Task { await vm.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                 sortMenu
                 filterMenu
+                // iPad: Grid-Dashboard ein/aus + Layout bearbeiten. iPhone
+                // (compact) behält die feste Liste, daher dort ausgeblendet.
+                // Grid-Edit nur, wenn das anpassbare Dashboard aktiv ist; der
+                // Split-/Grid-Umschalter lebt jetzt in den Einstellungen.
+                if horizontalSizeClass == .regular, iPadDashboardActive {
+                    Button { editingDashboard.toggle() } label: {
+                        Image(systemName: editingDashboard ? "checkmark.circle.fill" : "slider.horizontal.3")
+                    }
+                }
+                Button { showNodesSheet.toggle() } label: { Image(systemName: "server.rack") }
                 Button { showSubmit.toggle() } label: { Image(systemName: "plus.circle.fill") }
             }
         }
         #else
         ToolbarItemGroup(placement: .primaryAction) {
-            Toggle("Alle", isOn: $vm.allUsers).toggleStyle(.switch)
+            allUsersToggle
             Button { Task { await vm.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                 .keyboardShortcut(Shortcut.refresh.key, modifiers: Shortcut.refresh.modifiers)
                 .help("Aktualisieren (r)")
@@ -519,22 +855,39 @@ struct JobsView: View {
             Button { showSubmit.toggle() } label: { Image(systemName: "plus.circle.fill") }
                 .keyboardShortcut(Shortcut.submitJob.key, modifiers: Shortcut.submitJob.modifiers)
                 .help("sbatch (n — toggle)")
+            Button { showNodesSheet.toggle() } label: { Image(systemName: "server.rack") }
+                .keyboardShortcut(Shortcut.nodesOverview.key, modifiers: Shortcut.nodesOverview.modifiers)
+                .help("Knoten-Übersicht (G — toggle)")
             Button { showHelp.toggle() } label: { Image(systemName: "questionmark.circle") }
                 .keyboardShortcut(Shortcut.help.key, modifiers: Shortcut.help.modifiers)
                 .help("Tastatur-Shortcuts (h — toggle)")
         }
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                withAnimation { inspectorOpen.toggle() }
-            } label: {
-                Image(systemName: "sidebar.right")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(inspectorOpen ? Theme.accent : Theme.textPrimary)
-                    .symbolVariant(inspectorOpen ? .fill : .none)
+        if dashboardEnabled {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editingDashboard.toggle()
+                } label: {
+                    Image(systemName: editingDashboard ? "checkmark.circle.fill" : "slider.horizontal.3")
+                        .foregroundColor(editingDashboard ? Theme.accent : Theme.textPrimary)
+                }
+                .help(editingDashboard ? "Layout fertig bearbeiten" : "Layout bearbeiten (verschieben/skalieren)")
             }
-            .keyboardShortcut("0", modifiers: [.command, .option])
-            .help(inspectorOpen ? "Inspector schliessen (⌘⌥0)" : "Inspector öffnen (⌘⌥0)")
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    withAnimation { inspectorOpen.toggle() }
+                } label: {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(inspectorOpen ? Theme.accent : Theme.textPrimary)
+                        .symbolVariant(inspectorOpen ? .fill : .none)
+                }
+                .keyboardShortcut("0", modifiers: [.command, .option])
+                .help(inspectorOpen ? "Inspector schliessen (⌘⌥0)" : "Inspector öffnen (⌘⌥0)")
+            }
         }
+        // Umschalter Split-/Grid-Ansicht lebt jetzt in den Einstellungen
+        // (Settings → „Dashboard (Jobs)"), nicht mehr in der Toolbar.
         #endif
     }
 
@@ -544,9 +897,17 @@ struct JobsView: View {
     /// bleibt auf der Liste, Batch-Aktionen laufen über die untere Leiste).
     private var iosDetailPresented: Binding<Bool> {
         Binding(
-            get: { !selectionMode && cursor != nil },
+            // Im Grid-Dashboard zeigt das Detail-Widget den Job inline — dann
+            // NICHT zusätzlich pushen.
+            get: { !iPadDashboardActive && !selectionMode && cursor != nil },
             set: { if !$0 { cursor = nil } }
         )
+    }
+
+    /// iPad mit großer Breite + aktiviertem Dashboard → Grid statt Liste/Push.
+    /// iPhone (compact) bleibt immer bei der festen Liste.
+    private var iPadDashboardActive: Bool {
+        horizontalSizeClass == .regular && dashboardEnabled
     }
     #endif
 
@@ -602,8 +963,8 @@ struct JobsView: View {
                 NSApplication.shared.terminate(nil)
                 #endif
             }
-            Shortcut.hiddenButton(.toggleAllUsers)       { vm.allUsers.toggle() }
-            Shortcut.hiddenButton(.toggleAllUsersCmd)    { vm.allUsers.toggle() }
+            Shortcut.hiddenButton(.toggleAllUsers)       { withAnimation(.smooth(duration: 0.3)) { vm.allUsers.toggle() } }
+            Shortcut.hiddenButton(.toggleAllUsersCmd)    { withAnimation(.smooth(duration: 0.3)) { vm.allUsers.toggle() } }
             Shortcut.hiddenButton(.toggleRunningOnly)    { vm.runningOnly.toggle() }
             Shortcut.hiddenButton(.attachSelected)       { attachSelectedJob() }
             Shortcut.hiddenButton(.cancelSelected)       { requestCancelOfSelection() }
@@ -651,7 +1012,7 @@ struct JobsView: View {
         // Auto-advance in whichever direction the user was last navigating
         // — so range-marking with ⇧/Space walks the same way as the prior
         // ↑ / ↓ presses, not always downward.
-        let rows = vm.filtered().sorted(using: sortOrder)
+        let rows = visibleJobs
         guard let idx = rows.firstIndex(where: { $0.id == id }) else { return }
         let next = idx + lastDirection
         if next >= 0 && next < rows.count {
@@ -874,9 +1235,14 @@ struct JobsView: View {
     }
 
     private func cyclePane(by delta: Int) {
-        // Available panes, skipping inspector when it's collapsed.
+        // Available panes, skipping inspector when it's collapsed (or when the
+        // grid dashboard is active — there is no single inspector pane then).
         var order: [Pane] = [.sidebar, .table, .detail]
+        #if os(macOS)
+        if inspectorOpen && !dashboardEnabled { order.append(.inspector) }
+        #else
         if inspectorOpen { order.append(.inspector) }
+        #endif
 
         let current = focusedPane ?? .table
         let idx = order.firstIndex(of: current) ?? 1
@@ -898,7 +1264,11 @@ struct JobsView: View {
     /// Materialised, sorted, filtered job list — the row order the user
     /// sees right now in the table.
     private var visibleJobs: [Job] {
-        vm.filtered().sorted(using: sortOrder)
+        let sorted = vm.filtered().sorted(using: sortOrder)
+        guard runningJobsFirst else { return sorted }
+        // Stabile Partition: laufende Jobs zuerst, jede Gruppe behält ihre
+        // Spaltensortierung.
+        return sorted.filter(\.isRunning) + sorted.filter { !$0.isRunning }
     }
 
     /// Make sure a cursor exists whenever we have data, so the first ↑/↓
@@ -977,13 +1347,19 @@ struct JobsView: View {
             nodes: vm.partitionNodes[sel.name] ?? [],
             details: vm.partitionDetails[sel.name] ?? [:],
             onClose: { sheetPartition = nil },
-            onRefresh: { Task { await vm.loadPartition(sel.name) } }
+            onRefresh: { Task { await vm.loadPartition(sel.name, force: true) } }
         )
+        .environmentObject(appState)
     }
 
     @ViewBuilder
     private var gpuHoursSheet: some View {
         GpuHoursSheetView()
+            .environmentObject(appState)
+    }
+
+    private var nodesSheet: some View {
+        NodesOverviewView()
             .environmentObject(appState)
     }
 
@@ -1051,12 +1427,9 @@ struct JobsView: View {
                 // iPhone: Cluster-Leiste immer sichtbar (Tap öffnet das Sheet).
                 compactClusterBar
                 Divider().background(Theme.border.opacity(0.6))
-                #else
-                if !inspectorOpen {
-                    compactClusterBar
-                    Divider().background(Theme.border.opacity(0.6))
-                }
                 #endif
+                // macOS: collapsed inspector = just collapsed; no compact cluster
+                // strip — the info simply isn't shown until the column is opened.
                 filterBar
                 if let err = vm.error {
                     ErrorBanner(message: err)
@@ -1085,7 +1458,7 @@ struct JobsView: View {
         ["ID", "Name", "Status", "User", "QoS", "Partition", "GPU", "CPU", "Memory", "Laufzeit"]
 
     private var jobListCompact: some View {
-        let real = vm.filtered().sorted(using: sortOrder)
+        let real = visibleJobs
         let initialLoad = !vm.initialFetchDone && real.isEmpty
         let data = initialLoad ? Self.skeletonJobs : real
         return List {
@@ -1241,9 +1614,9 @@ struct JobsView: View {
             GpuAllocationMiniStrip(usage: vm.gpuUsage, isLoading: initialLoad) {
                 openInspector()
             }
-            if initialLoad || !vm.diskQuotas.isEmpty {
+            if vm.quotasLoading || !vm.diskQuotas.isEmpty {
                 Divider().background(Theme.border.opacity(0.4))
-                DiskQuotasMiniStrip(quotas: vm.diskQuotas, isLoading: initialLoad) {
+                DiskQuotasMiniStrip(quotas: vm.diskQuotas, isLoading: vm.quotasLoading) {
                     openInspector()
                 }
             }
@@ -1254,40 +1627,52 @@ struct JobsView: View {
     /// Quotas (full), GPU Hours (full). Empty data + initial-load state is
     /// rendered as a redacted skeleton with shimmer.
     private var inspectorPane: some View {
-        let initialLoad = !vm.initialFetchDone
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 12) {
+                    gpuAllocationCardView
+                    diskQuotasCardView
+                    gpuHoursCardView
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    // Shared cluster cards — reused by the resizable macOS cluster column and the
+    // scrolling inspector pane (iOS sheet / inspector toggle).
+
+    private var gpuAllocationCardView: some View {
         let focusedPartition: String? = {
             guard focusedPane == .inspector,
                   case .partition(let n) = inspectorCursor else { return nil }
             return n
         }()
-        let gpuHoursFocused = focusedPane == .inspector && inspectorCursor == .gpuHours
-        return ZStack {
-            Theme.background.ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: 12) {
-                    GpuAllocationStrip(
-                        usage: vm.gpuUsage,
-                        isLoading: initialLoad,
-                        focusedPartition: focusedPartition
-                    ) { name in
-                        sheetPartition = PartitionSelection(name: name)
-                        Task { await vm.loadPartition(name) }
-                    }
-                    DiskQuotasCard(
-                        quotas: vm.diskQuotas,
-                        isLoading: initialLoad
-                    )
-                    GpuHoursCard(
-                        entries: vm.gpuHours,
-                        currentUser: appState.credentials?.username,
-                        isLoading: initialLoad,
-                        isFocused: gpuHoursFocused,
-                        onOpenFullView: { showGpuHoursSheet = true }
-                    )
-                }
-                .padding(12)
-            }
+        return GpuAllocationStrip(
+            usage: vm.gpuUsage,
+            isLoading: !vm.initialFetchDone,
+            focusedPartition: focusedPartition
+        ) { name in
+            sheetPartition = PartitionSelection(name: name)
+            Task { await vm.loadPartition(name) }
         }
+    }
+
+    private var diskQuotasCardView: some View {
+        DiskQuotasCard(quotas: vm.diskQuotas, isLoading: vm.quotasLoading)
+    }
+
+    private var gpuHoursCardView: some View {
+        let gpuHoursFocused = focusedPane == .inspector && inspectorCursor == .gpuHours
+        return GpuHoursCard(
+            entries: vm.gpuHours,
+            currentUser: appState.credentials?.username,
+            isLoading: vm.hoursLoading,
+            isFocused: gpuHoursFocused,
+            onOpenFullView: { showGpuHoursSheet = true },
+            onRefresh: { Task { await vm.reloadGpuHours() } }
+        )
     }
 
 
@@ -1366,8 +1751,14 @@ struct JobsView: View {
         .background(Theme.surface)
     }
 
+    /// White text on the selected (blue) row so coloured cell text stays
+    /// readable — in light mode dark/coloured text otherwise vanishes on blue.
+    private func cellFg(_ job: Job, _ base: Color) -> Color {
+        cursor == job.id ? Color.white : base
+    }
+
     private var table: some View {
-        let real = vm.filtered().sorted(using: sortOrder)
+        let real = visibleJobs
         let initialLoad = !vm.initialFetchDone && real.isEmpty
         let data = initialLoad ? Self.skeletonJobs : real
         // Column widths are derived from the actual job set (not the
@@ -1375,7 +1766,8 @@ struct JobsView: View {
         // load we fall back to the skeleton widths so the table doesn't
         // visibly resize on first data arrival.
         let sizing = ColumnSizing(jobs: real.isEmpty ? Self.skeletonJobs : real)
-        return Table(data, selection: $cursor, sortOrder: $sortOrder) {
+        return ScrollViewReader { proxy in
+        Table(data, selection: $cursor, sortOrder: $sortOrder) {
             TableColumn("ID", value: \.jobId) { job in
                 HStack(spacing: 6) {
                     Image(systemName: marked.contains(job.id) ? "checkmark.square.fill" : "square")
@@ -1383,13 +1775,14 @@ struct JobsView: View {
                         .foregroundColor(marked.contains(job.id) ? Theme.accent : Theme.textSecondary.opacity(0.45))
                     Circle().fill(Theme.stateColor(job.state)).frame(width: 8, height: 8)
                     Text(job.jobId).font(.callout.monospaced())
+                        .foregroundColor(cellFg(job, Theme.textPrimary))
                 }
             }
             .width(sizing.id + 22)
 
             TableColumn("Name", value: \.name) { job in
                 Text(job.name)
-                    .foregroundColor(Theme.textPrimary)
+                    .foregroundColor(cellFg(job, Theme.textPrimary))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -1406,28 +1799,29 @@ struct JobsView: View {
             .width(sizing.state)
 
             TableColumn("User", value: \.user) { job in
-                Text(job.user).foregroundColor(Theme.textSecondary).lineLimit(1)
+                Text(job.user).foregroundColor(cellFg(job, Theme.textSecondary)).lineLimit(1)
             }
             .width(sizing.user)
 
             TableColumn("QoS", value: \.qos) { job in
+                let qc = Theme.qosColor(job.qos)
                 Text(job.qos)
-                    .foregroundColor(Theme.purple)
+                    .foregroundColor(qc)
                     .font(.caption.bold())
                     .padding(.horizontal, 6).padding(.vertical, 1)
-                    .background(Theme.purple.opacity(0.15))
+                    .background(qc.opacity(0.15))
                     .clipShape(Capsule())
             }
             .width(sizing.qos)
 
             TableColumn("Part", value: \.partition) { job in
-                Text(job.partition).foregroundColor(Theme.cyan).font(.callout.bold())
+                Text(job.partition).foregroundColor(cellFg(job, Theme.cyan)).font(.callout.bold())
             }
             .width(sizing.partition)
 
             TableColumn("GPU", value: \.gpus) { job in
                 Text(job.gpus > 0 ? "\(job.gpus)" : "—")
-                    .foregroundColor(job.gpus > 0 ? Theme.purple : Theme.textSecondary)
+                    .foregroundColor(cellFg(job, job.gpus > 0 ? Theme.purple : Theme.textSecondary))
                     .font(.callout.monospacedDigit())
             }
             .width(sizing.gpu)
@@ -1435,45 +1829,80 @@ struct JobsView: View {
             TableColumn("CPU/Mem", value: \.cpus) { job in
                 HStack(spacing: 4) {
                     Text("\(job.cpus)")
-                        .foregroundColor(Theme.textPrimary)
+                        .foregroundColor(cellFg(job, Theme.textPrimary))
                         .font(.callout.monospacedDigit())
                     Text("·")
-                        .foregroundColor(Theme.textSecondary)
+                        .foregroundColor(cellFg(job, Theme.textSecondary))
                     Text(job.memory)
-                        .foregroundColor(Theme.textSecondary)
+                        .foregroundColor(cellFg(job, Theme.textSecondary))
                         .font(.caption.monospacedDigit())
                 }
             }
             .width(sizing.cpuMem)
 
             TableColumn("Zeit", value: \.runtime) { job in
-                Text(job.runtime).foregroundColor(Theme.textSecondary).font(.callout.monospaced())
+                Text(job.runtime).foregroundColor(cellFg(job, Theme.textSecondary)).font(.callout.monospaced())
             }
             .width(sizing.runtime)
 
             TableColumn("Node / Reason") { job in
                 if !job.reason.isEmpty {
                     Text(job.reason)
-                        .foregroundColor(Theme.warning)
+                        .foregroundColor(cellFg(job, Theme.warning))
                         .font(.callout.monospaced())
                         .lineLimit(1)
                         .truncationMode(.tail)
                 } else {
                     Text(job.node)
-                        .foregroundColor(Theme.textSecondary)
+                        .foregroundColor(cellFg(job, Theme.textSecondary))
                         .font(.callout.monospaced())
                         .lineLimit(1)
                 }
             }
             .width(min: sizing.nodeReason, ideal: sizing.nodeReason)
         }
+        // Right-click a row to copy fields — a SwiftUI Table isn't text-
+        // selectable, so this is how you get a job's ID / name / node onto the
+        // clipboard.
+        .contextMenu(forSelectionType: Job.ID.self) { ids in
+            if let id = ids.first, let job = real.first(where: { $0.id == id }) {
+                Button("Job-ID kopieren") { Clipboard.copy(job.jobId) }
+                Button("Name kopieren") { Clipboard.copy(job.name) }
+                if !job.node.isEmpty, job.node != "—" {
+                    Button("Node kopieren") { Clipboard.copy(job.node) }
+                }
+                Button("User kopieren") { Clipboard.copy(job.user) }
+                Divider()
+                Button("Zeile kopieren (Tab-getrennt)") {
+                    Clipboard.copy([
+                        job.jobId, job.name, job.state, job.user, job.qos,
+                        job.partition, "\(job.gpus)", job.runtime,
+                        job.reason.isEmpty ? job.node : job.reason
+                    ].joined(separator: "\t"))
+                }
+            }
+        }
         .scrollContentBackground(.hidden)
         .background(Theme.background)
         .focused($focusedPane, equals: .table)
         .focusable()
+        .focusEffectDisabled()
         .redacted(reason: initialLoad ? .placeholder : [])
         .shimmering(initialLoad)
         .animation(.smooth(duration: 0.4), value: vm.initialFetchDone)
+        .overlay {
+            if !initialLoad && real.isEmpty {
+                SlurmyEmptyState(
+                    title: "Keine Jobs",
+                    message: vm.search.isEmpty
+                        ? "Alles ruhig im Cluster."
+                        : "Nichts passt zu deiner Suche.",
+                    mascotWidth: 200
+                )
+            }
+        }
+        .onAppear { scrollToCursor(proxy) }
+        }
     }
 
     /// Pre-computed pixel widths for each column based on the widest content
@@ -1583,14 +2012,11 @@ private struct EmptyDetailPlaceholder: View {
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
-            VStack(spacing: 14) {
-                Image(systemName: "sidebar.right")
-                    .font(.system(size: 42, weight: .light))
-                    .foregroundColor(Theme.textSecondary.opacity(0.5))
-                Text("Job auswählen, um Details zu sehen")
-                    .font(.callout)
-                    .foregroundColor(Theme.textSecondary)
-            }
+            SlurmyEmptyState(
+                title: "Job auswählen",
+                message: "Wähle links einen Job – Slurmy zeigt dir Details, Logs und Live-GPU-Stats.",
+                mascotWidth: 240
+            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1637,18 +2063,19 @@ extension Notification.Name {
 }
 
 extension View {
-    /// Subtle accent border to visualise which pane currently holds focus.
+    /// Marks which pane / row currently holds the keyboard focus with a slim
+    /// accent bar on the leading edge — the convention used by Mail, Xcode and
+    /// VS Code for the "active" region. Deliberately not a full border: a boxed
+    /// 2px ring around a big pane reads like a debug overlay.
     @ViewBuilder
     func paneFocusRing(_ active: Bool) -> some View {
-        self.overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(
-                    active ? Theme.accent.opacity(0.55) : Color.clear,
-                    lineWidth: 2
-                )
-                .padding(2)
+        self.overlay(alignment: .leading) {
+            Capsule(style: .continuous)
+                .fill(active ? Theme.accent : Color.clear)
+                .frame(width: 3)
+                .padding(.vertical, 5)
                 .allowsHitTesting(false)
                 .animation(.smooth(duration: 0.15), value: active)
-        )
+        }
     }
 }

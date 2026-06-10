@@ -164,7 +164,7 @@ struct BatchValueSheet: View {
             Label("Anwenden", systemImage: "checkmark.circle.fill")
                 .frame(maxWidth: .infinity).padding(.vertical, 12)
                 .background(canApply ? Theme.accent : Theme.surfaceElevated)
-                .foregroundColor(canApply ? .black : Theme.textSecondary)
+                .foregroundColor(canApply ? Theme.onAccent : Theme.textSecondary)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .disabled(!canApply)

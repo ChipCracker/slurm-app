@@ -239,30 +239,64 @@ struct GpuPartitionPill: View {
             }
             StackedGpuBar(usage: usage)
                 .frame(height: 8)
-            HStack(spacing: 6) {
-                if usage.ownAllocated > 0 {
-                    miniLegend("mine", count: usage.ownAllocated, color: Theme.ownNonPreempt)
-                }
-                if usage.preemptible > 0 {
-                    miniLegend("preempt", count: usage.preemptible, color: Theme.ownPreempt)
+            HStack(spacing: 8) {
+                // One chip per non-zero bar segment, so the numbers never
+                // overlap and add up to the total. 🔒 = garantiert, ⏏ = preemptierbar.
+                ForEach(segmentLegend) { seg in
+                    miniLegend(seg.label, count: seg.count, color: seg.color, symbol: seg.symbol)
                 }
                 Spacer(minLength: 0)
-                Text("\(usage.availableGpus) frei")
-                    .font(.caption2)
-                    .foregroundColor(Theme.textSecondary)
+                miniLegend("frei", count: usage.availableGpus, color: Theme.gpuFree, symbol: Self.freeSymbol)
             }
+            .help("🔒 = garantiert · ⏏ = preemptierbar (verdrängbar) · ◌ = frei")
         }
         .padding(10)
         .background(Theme.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func miniLegend(_ label: String, count: Int, color: Color) -> some View {
+    /// SF Symbols shared with the full legend so the coding stays consistent.
+    static let guaranteedSymbol = "lock.fill"
+    static let preemptSymbol = "eject.fill"
+    static let freeSymbol = "circle.dashed"
+
+    private struct LegendSeg: Identifiable {
+        let label: String
+        let count: Int
+        let color: Color
+        let symbol: String
+        var id: String { "\(label)\(symbol)" }
+    }
+
+    /// Non-overlapping buckets matching the four bar segments, skipping zeros.
+    private var segmentLegend: [LegendSeg] {
+        var segs: [LegendSeg] = []
+        if usage.ownNonPreemptible > 0 {
+            segs.append(.init(label: "mine", count: usage.ownNonPreemptible, color: Theme.ownNonPreempt, symbol: Self.guaranteedSymbol))
+        }
+        if usage.ownPreemptible > 0 {
+            segs.append(.init(label: "mine", count: usage.ownPreemptible, color: Theme.ownPreempt, symbol: Self.preemptSymbol))
+        }
+        if usage.otherNonPreemptible > 0 {
+            segs.append(.init(label: "belegt", count: usage.otherNonPreemptible, color: Theme.otherNonPreempt, symbol: Self.guaranteedSymbol))
+        }
+        if usage.otherPreemptible > 0 {
+            segs.append(.init(label: "belegt", count: usage.otherPreemptible, color: Theme.otherPreempt, symbol: Self.preemptSymbol))
+        }
+        return segs
+    }
+
+    private func miniLegend(_ label: String, count: Int, color: Color, symbol: String? = nil) -> some View {
         HStack(spacing: 3) {
             RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 8, height: 8)
             Text("\(count) \(label)")
                 .font(.caption2)
                 .foregroundColor(Theme.textSecondary)
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 7))
+                    .foregroundColor(Theme.textSecondary)
+            }
         }
     }
 }
@@ -283,7 +317,9 @@ struct StackedGpuBar: View {
                 seg(width: segWidth(usage.otherPreemptible,    total: total, full: w), color: Theme.otherPreempt)
                 Spacer(minLength: 0)
             }
-            .background(Theme.background.opacity(0.7))
+            // The remaining (Spacer) area is free GPUs — tint it so "frei" is
+            // visible at a glance instead of blending into the card.
+            .background(Theme.gpuFree)
             .clipShape(RoundedRectangle(cornerRadius: 3))
         }
     }
@@ -411,6 +447,8 @@ struct GpuHoursCard: View {
     /// sees that Space will open the full GPU-Hours sheet.
     var isFocused: Bool = false
     var onOpenFullView: (() -> Void)? = nil
+    /// Manual refresh — GPU hours are otherwise only re-fetched every 30 min.
+    var onRefresh: (() -> Void)? = nil
 
     private var maxHours: Double {
         entries.map(\.hours).max() ?? 1
@@ -443,13 +481,26 @@ struct GpuHoursCard: View {
                     .font(.caption.bold())
                     .foregroundColor(Theme.textPrimary)
                 Spacer()
-                Text("Top \(data.count) · \(Calendar.current.component(.year, from: Date()))")
+                Text("Top \(data.count) · \(String(Calendar.current.component(.year, from: Date())))")
                     .font(.caption2)
                     .foregroundColor(Theme.textSecondary)
                 if onOpenFullView != nil {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.caption2)
                         .foregroundColor(Theme.textSecondary)
+                }
+                if let onRefresh {
+                    Button(action: onRefresh) {
+                        if isLoading {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Image(systemName: "arrow.clockwise").font(.caption2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(Theme.textSecondary)
+                    .disabled(isLoading)
+                    .help("GPU-Hours aktualisieren")
                 }
             }
             if data.isEmpty {
@@ -497,7 +548,7 @@ struct GpuHoursCard: View {
                 }
             }
             .frame(height: 6)
-            Text(String(format: "%,.0fh", entry.hours))
+            Text("\(entry.hours.formatted(.number.precision(.fractionLength(0))))h")
                 .font(.caption2.monospacedDigit())
                 .foregroundColor(Theme.textPrimary)
                 .frame(width: 64, alignment: .trailing)
@@ -507,16 +558,26 @@ struct GpuHoursCard: View {
 
 struct GpuLegend: View {
     var body: some View {
-        HStack(spacing: 12) {
-            chip(color: Theme.ownNonPreempt, text: "mine")
-            chip(color: Theme.ownPreempt, text: "mine · preempt")
-            chip(color: Theme.otherNonPreempt, text: "other")
-            chip(color: Theme.otherPreempt, text: "other · preempt")
-            Spacer()
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 12) {
+                chip(color: Theme.ownNonPreempt, text: "mine", symbol: GpuPartitionPill.guaranteedSymbol)
+                chip(color: Theme.ownPreempt, text: "mine", symbol: GpuPartitionPill.preemptSymbol)
+                chip(color: Theme.otherNonPreempt, text: "belegt", symbol: GpuPartitionPill.guaranteedSymbol)
+                chip(color: Theme.otherPreempt, text: "belegt", symbol: GpuPartitionPill.preemptSymbol)
+                chip(color: Theme.gpuFree, text: "frei", symbol: GpuPartitionPill.freeSymbol)
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                caption(GpuPartitionPill.guaranteedSymbol, "garantiert")
+                caption(GpuPartitionPill.preemptSymbol, "preemptierbar")
+                caption(GpuPartitionPill.freeSymbol, "frei")
+            }
+            .font(.caption2)
+            .foregroundColor(Theme.textSecondary)
         }
     }
 
-    private func chip(color: Color, text: String) -> some View {
+    private func chip(color: Color, text: String, symbol: String? = nil) -> some View {
         HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(color)
@@ -524,6 +585,18 @@ struct GpuLegend: View {
             Text(text)
                 .font(.caption2)
                 .foregroundColor(Theme.textSecondary)
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 8))
+                    .foregroundColor(Theme.textSecondary)
+            }
+        }
+    }
+
+    private func caption(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: symbol).font(.system(size: 8))
+            Text("= \(text)")
         }
     }
 }

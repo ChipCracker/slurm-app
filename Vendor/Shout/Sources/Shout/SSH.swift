@@ -39,7 +39,14 @@ public class SSH {
     private let sock: Socket
     
     public var ptyType: PtyType? = nil
-    
+
+    /// Milliseconds a blocking libssh2 call may wait before it errors out
+    /// instead of hanging forever. 0 = wait forever (libssh2 default).
+    public var timeout: Int {
+        get { session.timeout }
+        set { session.timeout = newValue }
+    }
+
     /// Creates a new SSH session
     ///
     /// - Parameters:

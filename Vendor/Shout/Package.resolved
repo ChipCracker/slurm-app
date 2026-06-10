@@ -1,5 +1,5 @@
 {
-  "originHash" : "0f21e18bcfca099a36b049266d14fb6473a80932df0e80558ce71483cb5d9ebc",
+  "originHash" : "0c6383e35f63015049443be64741e089065d5b5cebf3fcb4ede0e05dd0281808",
   "pins" : [
     {
       "identity" : "bluesocket",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "c9894fd117457f1d006575fbfb2fdfd6f79eac03",
         "version" : "1.0.200"
+      }
+    },
+    {
+      "identity" : "inject",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/krzysztofzablocki/Inject.git",
+      "state" : {
+        "revision" : "f53380e986a8b056e37d7ce9ca68de610b8415ef",
+        "version" : "1.6.0"
       }
     }
   ],

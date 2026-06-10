@@ -18,9 +18,9 @@ struct GpuHoursSheetView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().background(.white.opacity(0.08))
+            Divider().background(Theme.hairline)
             controls
-            Divider().background(.white.opacity(0.08))
+            Divider().background(Theme.hairline)
             content
         }
         .background(rangeShortcuts)

@@ -31,53 +31,74 @@ enum SSHError: LocalizedError {
 /// dedicated `DispatchQueue` so concurrent SwiftUI refresh tasks can never
 /// touch the session in parallel.
 final class SSHClient: @unchecked Sendable {
-    private let session: SSH
+    // `session` is rebuilt on the serial `queue` when the connection dies
+    // (sleep/wake, idle-timeout, network change), so it is mutable but only
+    // ever touched from `queue`.
+    private var session: SSH
+    private let creds: Credentials
     private let queue: DispatchQueue
     let host: String
     let username: String
 
-    private init(session: SSH, host: String, username: String) {
+    private init(session: SSH, creds: Credentials) {
         self.session = session
-        self.host = host
-        self.username = username
-        self.queue = DispatchQueue(label: "slurmios.ssh.\(username)@\(host)", qos: .userInitiated)
+        self.creds = creds
+        self.host = creds.host
+        self.username = creds.username
+        self.queue = DispatchQueue(label: "slurmios.ssh.\(creds.username)@\(creds.host)", qos: .userInitiated)
     }
 
     static func connect(credentials creds: Credentials) async throws -> SSHClient {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<SSHClient, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let session = try SSH(host: creds.host, port: Int32(creds.port))
-                    do {
-                        switch creds.authMethod {
-                        case .password:
-                            try session.authenticate(username: creds.username, password: creds.password ?? "")
-                        case .privateKey:
-                            guard let pem = creds.privateKey, !pem.isEmpty else {
-                                throw SSHError.authenticationFailed("Privater Schlüssel fehlt.")
-                            }
-                            // In-Memory-Auth: kein Temp-File, keine .pub, kein
-                            // getpass-Fallback — funktioniert in der Sandbox.
-                            try session.authenticate(
-                                username: creds.username,
-                                privateKeyData: pem,
-                                passphrase: (creds.passphrase?.isEmpty == false) ? creds.passphrase : nil
-                            )
-                        }
-                    } catch {
-                        // Shout.SSHError ist CustomStringConvertible und trägt die
-                        // echte libssh2-Meldung (z. B. "Authentication failed
-                        // (username/password)"). Die NSError-Bridge würde nur das
-                        // generische "operation couldn't be completed" liefern.
-                        cont.resume(throwing: SSHError.authenticationFailed(String(describing: error)))
-                        return
-                    }
-                    cont.resume(returning: SSHClient(session: session, host: creds.host, username: creds.username))
+                    let session = try makeSession(creds)
+                    cont.resume(returning: SSHClient(session: session, creds: creds))
                 } catch {
-                    cont.resume(throwing: SSHError.connectionFailed(error.localizedDescription))
+                    cont.resume(throwing: error)
                 }
             }
         }
+    }
+
+    /// Open a fresh, authenticated libssh2 session for `creds`. Used both for
+    /// the initial connect and for transparent reconnects after a dropped link.
+    private static func makeSession(_ creds: Credentials) throws -> SSH {
+        let session: SSH
+        do {
+            session = try SSH(host: creds.host, port: Int32(creds.port))
+            // Abort a stalled blocking call after 45s (LIBSSH2_ERROR_TIMEOUT)
+            // instead of hanging the serial SSH queue forever — generous enough
+            // for slow reads like sreport, but recovers from a dead network link.
+            session.timeout = 45_000
+        } catch {
+            throw SSHError.connectionFailed(error.localizedDescription)
+        }
+        do {
+            switch creds.authMethod {
+            case .password:
+                try session.authenticate(username: creds.username, password: creds.password ?? "")
+            case .privateKey:
+                guard let pem = creds.privateKey, !pem.isEmpty else {
+                    throw SSHError.authenticationFailed("Privater Schlüssel fehlt.")
+                }
+                // In-Memory-Auth: kein Temp-File, keine .pub, kein getpass-
+                // Fallback — funktioniert in der Sandbox.
+                try session.authenticate(
+                    username: creds.username,
+                    privateKeyData: pem,
+                    passphrase: (creds.passphrase?.isEmpty == false) ? creds.passphrase : nil
+                )
+            }
+        } catch let e as SSHError {
+            throw e
+        } catch {
+            // Shout.SSHError ist CustomStringConvertible und trägt die echte
+            // libssh2-Meldung. Die NSError-Bridge würde nur das generische
+            // "operation couldn't be completed" liefern.
+            throw SSHError.authenticationFailed(String(describing: error))
+        }
+        return session
     }
 
     /// Whitelisted read-only command path.
@@ -94,19 +115,58 @@ final class SSHClient: @unchecked Sendable {
 
     private func rawExecute(_ command: String) async throws -> String {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
-            queue.async { [session] in
+            queue.async { [self] in
                 do {
-                    let (status, output) = try session.capture(command)
-                    if status != 0 && output.isEmpty {
-                        cont.resume(throwing: SSHError.commandFailed("(empty)", status))
-                        return
-                    }
-                    cont.resume(returning: output)
+                    cont.resume(returning: try captureWithReconnect(command))
                 } catch let err as SSHError {
                     cont.resume(throwing: err)
                 } catch {
-                    cont.resume(throwing: SSHError.commandFailed(error.localizedDescription, -1))
+                    // Shout.SSHError is CustomStringConvertible and carries the
+                    // real libssh2 message (e.g. "channel failure", "socket
+                    // timeout"). `localizedDescription` would only bridge to the
+                    // useless "The operation couldn't be completed.
+                    // (Shout.SSHError error 1.)" — so describe it directly.
+                    cont.resume(throwing: SSHError.commandFailed(String(describing: error), -1))
                 }
+            }
+        }
+    }
+
+    /// Runs `command` on the current session. If the session itself errors
+    /// (e.g. "Unable to send channel-open request" after the link dropped on
+    /// sleep/idle/network change), the connection is dead — rebuild it once and
+    /// retry the command so callers self-heal instead of failing forever.
+    /// MUST be called on `queue`.
+    private func captureWithReconnect(_ command: String) throws -> String {
+        let status: Int32
+        let output: String
+        do {
+            (status, output) = try session.capture(command)
+        } catch {
+            // Only a *session/channel* failure lands here (a non-zero command
+            // exit comes back as `status`, not a throw). Treat it as a dead
+            // link: reconnect (may throw if the host is truly unreachable) and
+            // retry exactly once.
+            session = try SSHClient.makeSession(creds)
+            (status, output) = try session.capture(command)
+        }
+        if status != 0 && output.isEmpty {
+            throw SSHError.commandFailed("(empty)", status)
+        }
+        return output
+    }
+
+    /// Proactively rebuild the session. Call when the link likely died while the
+    /// app was away (background/sleep) so the next command starts on a fresh
+    /// socket instead of blocking on a half-open one until the timeout. Runs on
+    /// the queue (serialised after any in-flight command); best-effort — if the
+    /// host is unreachable the old session is kept and the normal
+    /// captureWithReconnect path retries later.
+    func reconnect() async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            queue.async { [self] in
+                if let fresh = try? SSHClient.makeSession(creds) { session = fresh }
+                cont.resume()
             }
         }
     }

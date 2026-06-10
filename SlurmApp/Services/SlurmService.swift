@@ -12,6 +12,12 @@ actor SlurmService {
 
     // MARK: – Read operations
 
+    /// Proactively rebuild the SSH link (e.g. after the app returns from the
+    /// background) so the next command isn't stuck on a dead socket.
+    func reconnect() async {
+        await client.reconnect()
+    }
+
     func ping() async throws -> String {
         try await client.ping()
     }
@@ -94,6 +100,23 @@ actor SlurmService {
         return SlurmParser.parsePartitionNodes(out)
     }
 
+    /// Full `scontrol show node <name>` key/values — the detailed per-node view
+    /// (Gres, GresUsed with GPU indices, AllocTRES/CfgTRES, State, memory, …).
+    func fetchNodeDetails(_ node: String) async throws -> [String: String] {
+        let out = try await client.execute("scontrol show node \(shellEscape(node))")
+        return SlurmParser.parseScontrolKeyValue(out)
+    }
+
+    /// Every compute node across all partitions, deduplicated by name (a node can
+    /// appear once per partition). Adds the partition column `%P` so each node
+    /// carries its partition memberships. Read-only `sinfo`.
+    func fetchAllNodes() async throws -> [ClusterNode] {
+        let out = try await client.execute(
+            "sinfo -h -N -o \"%N|%G|%T|%c|%m|%e|%P\""
+        )
+        return SlurmParser.parseAllNodes(out)
+    }
+
     /// Tail the last N lines of a log file. Read-only.
     func tailLog(path: String, lines: Int = 200) async throws -> String {
         let n = max(1, min(lines, 2000))
@@ -105,13 +128,54 @@ actor SlurmService {
     /// an existing allocation without claiming new resources, so it does NOT
     /// modify cluster state (matches slurm-tui's `get_job_gpu_stats`).
     func liveGpuStats(jobId: String) async throws -> [GpuStat] {
-        let baseId = SlurmParser.normalizeArrayJobId(jobId)
+        // srun --jobid wants the RUNNING task's bare numeric id. For an array
+        // element ("172551_1") the base ArrayJobId ("172551") is the *pending*
+        // part — srun would say "Job is pending execution". So resolve the real
+        // per-task JobId via scontrol; fall back to the base for plain jobs.
+        let baseId = await resolveSrunJobId(jobId)
+        // `2>&1` folds srun's diagnostics into stdout so a failed step (no GPU
+        // on the node, allocation gone, srun rejected) surfaces a readable
+        // message instead of an empty "(empty)" error. `timeout` keeps a slow
+        // or stuck srun from blocking the shared SSH queue forever — the live
+        // card refreshes every 5s, so a hang would otherwise freeze the app.
+        // `</dev/null` detaches srun from stdin: over a non-PTY SSH exec channel
+        // srun otherwise forwards (and waits on) a stdin that never reaches EOF,
+        // which stalls the step and trips a channel error on the libssh2 side.
         let cmd =
-            "srun --overlap --jobid=\(shellEscape(baseId)) " +
+            "timeout 20 srun --overlap --jobid=\(shellEscape(baseId)) " +
             "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit " +
-            "--format=csv,noheader,nounits"
+            "--format=csv,noheader,nounits </dev/null 2>&1"
         let out = try await client.executeWrite(cmd) // srun isn't on the read-only allow-list
-        return SlurmParser.parseNvidiaSmi(out)
+        let stats = SlurmParser.parseNvidiaSmi(out)
+        // No parseable GPU rows but the command did print something → that's an
+        // srun/nvidia-smi error message. Bubble it up so the UI shows it rather
+        // than shimmering forever on an empty skeleton.
+        if stats.isEmpty {
+            let msg = out.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !msg.isEmpty {
+                throw SSHError.commandFailed(msg, -1)
+            }
+        }
+        return stats
+    }
+
+    /// Cache of array-element display id ("172551_1") → real numeric JobId.
+    private var resolvedSrunIds: [String: String] = [:]
+
+    /// The numeric JobId `srun --jobid` needs. Plain ids pass through; array
+    /// elements are resolved to the running task's real JobId via scontrol
+    /// (cached). Falls back to the base numeric id when scontrol can't help.
+    private func resolveSrunJobId(_ jobId: String) async -> String {
+        guard jobId.contains("_") else { return jobId }
+        if let cached = resolvedSrunIds[jobId] { return cached }
+        if let out = try? await client.execute("scontrol show job \(shellEscape(jobId))") {
+            let kv = SlurmParser.parseScontrolKeyValue(out)
+            if let real = kv["JobId"], Int(real) != nil {   // pure numeric → use it
+                resolvedSrunIds[jobId] = real
+                return real
+            }
+        }
+        return SlurmParser.baseNumericJobId(jobId)
     }
 
     /// MaxRSS of a running job via sstat. Returns memory in MB, or nil.

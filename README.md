@@ -68,6 +68,69 @@ On the Mac the app runs with a native **NavigationSplitView sidebar**, on
 iPhone/iPad with a TabView. Same source tree; the differences live in
 `MainTabView.swift` behind `#if os(macOS)`.
 
+## Installing into /Applications (dev & prod side by side)
+
+`scripts/install.sh` builds, signs and drops a standalone app into
+`/Applications` so the latest build is one click away in the Dock. Two flavours
+coexist — distinct bundle ids → separate Dock entries **and** separate Keychain
+credentials, so a dev build never disturbs your daily driver:
+
+```bash
+scripts/install.sh prod   # → "Slurmy"      (de.cwitzl.slurmapp)      production icon
+scripts/install.sh dev    # → "Slurmy Dev"  (de.cwitzl.slurmapp.dev)  orange DEV-ribbon icon
+```
+
+The script always builds the **Release** configuration (even for `dev`) and signs
+with the stable "Slurmy Local" identity. Release is required because a Debug build
+wraps a separate `.debug.dylib` that fails to load once installed standalone; the
+stable identity keeps saved credentials across rebuilds. The two installed apps
+are just for **coexistence** — neither has hot reloading (that needs running from
+Xcode, see below).
+
+## Day-to-day development & hot reloading
+
+For actual development, **run from Xcode** (⌘R), or use the one-command launcher:
+
+```bash
+scripts/dev.sh            # build Debug + launch "Slurmy Dev", real cluster
+scripts/dev.sh --mock     # same, with mock data (SLURMIOS_UIMOCK=1), no SSH
+```
+
+Either way the Debug configuration builds as **"Slurmy Dev"**
+(`de.cwitzl.slurmapp.dev`, orange DEV icon, own Keychain), so it never clobbers
+the installed stable app. `dev.sh` builds straight from DerivedData with hardened
+runtime off (so injection can load) and signs with "Slurmy Local" so credentials
+persist — keep it running and re-save files to hot-reload.
+
+SwiftUI has no built-in hot reload, so the project wires up
+[**Inject**](https://github.com/krzysztofzablocki/Inject): save a file in Xcode
+and the running app swaps the method bodies live — no rebuild, no restart, state
+preserved. One-time setup:
+
+1. **Install the InjectionIII helper app** — from the
+   [Mac App Store](https://apps.apple.com/app/injectioniii/id1380446739) (easiest,
+   no Gatekeeper friction) or the
+   [GitHub releases](https://github.com/johnno1962/InjectionIII/releases).
+2. **Launch InjectionIII** and via **File → Open…** select this repo's **folder**
+   (not the `.xcodeproj`); it then watches the sources for changes.
+3. **Run the app** — from Xcode (Debug) or via `scripts/dev.sh`. On launch the
+   console prints `💉 Injection connected` once InjectionIII has hooked in.
+4. **Edit a view, hit ⌘S** — the change appears in the running app instantly.
+
+How it's wired (already done, nothing to configure):
+
+- The `Inject` SPM package is a dependency (`project.yml`). It compiles to a
+  **no-op in Release** — zero runtime cost in the shipped app.
+- The Debug config carries `OTHER_LDFLAGS: -Xlinker -interposable`, which lets
+  Inject interpose and swap symbols. Release does **not** get this flag.
+- The Debug config also sets `EMIT_FRONTEND_COMMAND_LINES: YES` — **required on
+  Xcode 16.3+ (incl. Xcode 26)** so InjectionIII can locate compile commands;
+  without it injection fails with "Could not locate compile command".
+- `View.hotReloadable()` (in `Theme/HotReload.swift`) bundles
+  `@ObserveInjection` + `.enableInjection()`. It's applied at `RootView`, which
+  re-renders the whole tree on each injection. To make a specific screen reload
+  more reliably, add `.hotReloadable()` as the **last** modifier of its `body`.
+
 ## Tests
 
 ```bash

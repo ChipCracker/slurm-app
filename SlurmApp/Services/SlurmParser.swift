@@ -278,12 +278,61 @@ enum SlurmParser {
         }
     }
 
+    /// Parse `sinfo -h -N -o "%N|%G|%T|%c|%m|%e|%P"` into one row per node,
+    /// merging the partition column across the (per-partition) duplicate rows.
+    static func parseAllNodes(_ text: String) -> [ClusterNode] {
+        var order: [String] = []
+        var byName: [String: ClusterNode] = [:]
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            let parts = line.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count >= 6 else { continue }
+            let name = parts[0]
+            let partition = parts.count > 6
+                ? parts[6].trimmingCharacters(in: CharacterSet(charactersIn: "* "))
+                : ""
+            if let existing = byName[name] {
+                if !partition.isEmpty, !existing.partitions.contains(partition) {
+                    byName[name] = ClusterNode(
+                        name: existing.name, gres: existing.gres, state: existing.state,
+                        cpus: existing.cpus, memoryMB: existing.memoryMB,
+                        freeMemoryMB: existing.freeMemoryMB,
+                        partitions: existing.partitions + [partition]
+                    )
+                }
+            } else {
+                order.append(name)
+                byName[name] = ClusterNode(
+                    name: name,
+                    gres: parts[1],
+                    state: parts[2],
+                    cpus: parts[3],
+                    memoryMB: Int(parts[4]) ?? 0,
+                    freeMemoryMB: Int(parts[5]) ?? 0,
+                    partitions: partition.isEmpty ? [] : [partition]
+                )
+            }
+        }
+        return order.compactMap { byName[$0] }
+    }
+
     /// Normalize array job IDs like '167756_[3]' → '167756' for scontrol queries.
+    /// scontrol still accepts a concrete element like '167756_2', so those are
+    /// left as-is (only the bracketed pending range is collapsed to the base).
     static func normalizeArrayJobId(_ jobId: String) -> String {
         guard let r = jobId.range(of: #"^(\d+)_\[.*\]$"#, options: .regularExpression) else {
             return jobId
         }
         let match = String(jobId[r])
         return String(match.split(separator: "_").first ?? "")
+    }
+
+    /// The base **numeric** job id for `srun --jobid`, which rejects every array-
+    /// element notation ("172172_0", "172172_[3]") with "Invalid numeric value".
+    /// Strips anything from the first '_'; a plain id is returned unchanged.
+    static func baseNumericJobId(_ jobId: String) -> String {
+        if let underscore = jobId.firstIndex(of: "_") {
+            return String(jobId[..<underscore])
+        }
+        return jobId
     }
 }

@@ -169,6 +169,38 @@ final class SlurmParserTests: XCTestCase {
         XCTAssertEqual(SlurmParser.normalizeArrayJobId("12345"), "12345")
     }
 
+    func testBaseNumericJobId() {
+        // srun --jobid needs a bare number for every array form.
+        XCTAssertEqual(SlurmParser.baseNumericJobId("172172_0"), "172172")
+        XCTAssertEqual(SlurmParser.baseNumericJobId("167756_[3]"), "167756")
+        XCTAssertEqual(SlurmParser.baseNumericJobId("167756_2"), "167756")
+        XCTAssertEqual(SlurmParser.baseNumericJobId("12345"), "12345")
+    }
+
+    // MARK: – Cross-partition node overview
+
+    func testParseAllNodesDedupesAndMergesPartitions() {
+        // ml1 appears in two partitions (p1, p2); ml2 only in p2; cpu1 has no GPU.
+        let out = """
+        ml1|gpu:a100:8(S:0-1)|mixed|256|512000|128000|p1
+        ml1|gpu:a100:8(S:0-1)|mixed|256|512000|128000|p2*
+        ml2|gpu:h200:8|idle|192|768000|700000|p2
+        cpu1|(null)|allocated|128|256000|4000|cpu
+        """
+        let nodes = SlurmParser.parseAllNodes(out)
+        XCTAssertEqual(nodes.count, 3, "duplicate per-partition rows collapse to one node")
+
+        let ml1 = nodes.first { $0.name == "ml1" }
+        XCTAssertEqual(ml1?.partitions, ["p1", "p2"], "partitions merged, '*' stripped")
+        XCTAssertEqual(ml1?.gpu.count, 8)
+        XCTAssertEqual(ml1?.gpu.type, "a100")
+        XCTAssertEqual(ml1?.freeMemoryMB, 128000)
+
+        let cpu1 = nodes.first { $0.name == "cpu1" }
+        XCTAssertEqual(cpu1?.gpuCount, 0, "(null) gres → no GPU")
+        XCTAssertEqual(cpu1?.partitions, ["cpu"])
+    }
+
     // MARK: – Helper
 
     private func fixture(_ name: String) throws -> String {

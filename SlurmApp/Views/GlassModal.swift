@@ -58,7 +58,7 @@ struct GlassPanel<Content: View>: View {
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(.white.opacity(0.12), lineWidth: 0.5)
+                .stroke(Theme.hairline, lineWidth: 0.5)
         )
     }
 }

@@ -17,6 +17,13 @@ settings:
 packages:
   Shout:
     path: Vendor/Shout
+  # Live hot reloading (krzysztofzablocki/Inject). No-op in Release builds; the
+  # live method-swapping only kicks in on Debug, which carries the
+  # `-Xlinker -interposable` flag below and needs the InjectionIII helper app
+  # running. See README "Hot Reloading".
+  Inject:
+    url: https://github.com/krzysztofzablocki/Inject.git
+    from: "1.0.0"
 
 targets:
   SlurmApp:
@@ -31,14 +38,18 @@ targets:
         optional: true
     dependencies:
       - package: Shout
+      - package: Inject
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.cwitzl.slurmapp
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
+        # Custom Info.plist (NSAppTransportSecurity for SSH, launch screen,
+        # scene manifest). Merged with the INFOPLIST_KEY_* values below.
+        INFOPLIST_FILE: SlurmApp/Info.plist
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
-        INFOPLIST_KEY_CFBundleDisplayName: Slurm
+        INFOPLIST_KEY_CFBundleDisplayName: Slurmy
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         # iPhone + iPad
@@ -50,6 +61,22 @@ targets:
         # macOS-spezifisch (auf iOS ignoriert)
         ENABLE_HARDENED_RUNTIME: YES
         COMBINE_HIDPI_IMAGES: YES
+      # Dev/Production split: Debug builds get their own bundle id, name and
+      # icon (AppIconDev, orange "DEV" ribbon) so "Slurmy Dev" lives alongside
+      # the stable "Slurmy" in the Dock with separate Keychain credentials.
+      # Release is unchanged. See scripts/install.sh and scripts/make-dev-icon.py.
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: de.cwitzl.slurmapp.dev
+          INFOPLIST_KEY_CFBundleDisplayName: Slurmy Dev
+          ASSETCATALOG_COMPILER_APPICON_NAME: AppIconDev
+          # Required so Inject can interpose & live-swap method bodies. Debug
+          # only — Release stays a clean, self-contained binary.
+          OTHER_LDFLAGS: -Xlinker -interposable
+          # Xcode 16.3+ (incl. Xcode 26) emits compile commands differently;
+          # InjectionIII needs this to locate them ("Could not locate compile
+          # command" otherwise). Debug only. See README "Hot Reloading".
+          EMIT_FRONTEND_COMMAND_LINES: YES
 
   SlurmAppTests:
     type: bundle.unit-test
