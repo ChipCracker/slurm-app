@@ -170,6 +170,9 @@ private struct MacRootView: View {
                 .navigationSubtitle(connectionLabel)
         }
         .navigationSplitViewStyle(.balanced)
+        // Bei aktivem Liquid Glass: Material unter dem ganzen Fenster — die
+        // Panes tönen es nur noch halbtransparent (SlurmyPaneBackground).
+        .slurmyWindowGlass()
         .background(sectionShortcuts)
         .onReceive(NotificationCenter.default.publisher(for: .switchSection)) { note in
             if let sec = note.object as? MainSection { selection = sec }

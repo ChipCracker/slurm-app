@@ -37,7 +37,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.background.ignoresSafeArea()
+                SlurmyPaneBackground().ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 16) {
                         brandingHeader

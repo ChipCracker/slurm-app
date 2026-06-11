@@ -6,7 +6,7 @@ struct BookmarksView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.background.ignoresSafeArea()
+                SlurmyPaneBackground().ignoresSafeArea()
                 if bookmarks.bookmarks.isEmpty {
                     SlurmyEmptyState(
                         title: "Keine Lesezeichen",

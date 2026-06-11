@@ -218,6 +218,65 @@ private struct SlurmyGlassCircleButtonModifier: ViewModifier {
     }
 }
 
+// MARK: – Transluzentes Fenster ("glossy"), wenn Liquid Glass aktiv ist
+
+extension View {
+    /// Fenster-Material unter dem GESAMTEN Fenster (macOS): Desktop/dahinter-
+    /// liegende Fenster schimmern durch, die System-Toolbar bekommt echten
+    /// Inhalt zum Brechen. Nur bei aktivem Liquid Glass; sonst unverändert
+    /// opak. Auf dem App-Root (MacRootView) anwenden.
+    func slurmyWindowGlass() -> some View { modifier(SlurmyWindowGlassModifier()) }
+
+    /// Content-Hintergrund der Panes: opak ohne Glas, halbtransparent getönt
+    /// mit — die Theme-Farbe bleibt sichtbar (Farbkompatibilität), aber das
+    /// Fenster-Material scheint durch. Ersetzt `.background(Theme.background)`.
+    func slurmyContentBackground() -> some View { modifier(SlurmyContentBackgroundModifier()) }
+}
+
+private struct SlurmyWindowGlassModifier: ViewModifier {
+    @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        if #available(macOS 26.0, *), liquidGlassEnabled {
+            content.containerBackground(.thinMaterial, for: .window)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+private struct SlurmyContentBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(SlurmyPaneBackground())
+    }
+}
+
+/// ZStack-Grundschicht-Variante: ersetzt `Theme.background` als unterste
+/// Ebene eines Panes. Transluzenz NUR auf macOS — auf iOS liegt kein
+/// Fenster-Material darunter, dort würde die Theme-Farbe nur verblassen.
+struct SlurmyPaneBackground: View {
+    @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
+
+    var body: some View {
+        #if os(macOS)
+        if #available(macOS 26.0, *), liquidGlassEnabled {
+            // 0.55: genug Tönung für Theme-Identität und Textkontrast,
+            // genug Transparenz, damit das Fenster-Material sichtbar bleibt.
+            Theme.background.opacity(0.55)
+        } else {
+            Theme.background
+        }
+        #else
+        Theme.background
+        #endif
+    }
+}
+
 /// Gruppiert benachbarte Glas-Buttons (z. B. Refresh + Close im Modal-Header)
 /// in einem `GlassEffectContainer`, damit ihre Formen nativ ineinander
 /// verschmelzen/morphen können; vor macOS 26 schlicht ein HStack.

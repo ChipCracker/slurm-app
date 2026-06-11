@@ -265,7 +265,7 @@ struct JobDetailView: View {
 
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            SlurmyPaneBackground().ignoresSafeArea()
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {

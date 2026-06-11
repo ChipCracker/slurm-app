@@ -886,7 +886,7 @@ struct JobsView: View {
                 splitLayout
             }
         }
-        .background(Theme.background)
+        .slurmyContentBackground()
         .toolbar { jobsToolbar }
         .searchable(text: $vm.search, prompt: "Suche Job, User, Partition, Status")
         .searchFocusedCompat($searchFocused)   // ⌘F (Shortcut.focusSearch) springt hierhin
@@ -901,7 +901,7 @@ struct JobsView: View {
                     leadingPane
                 }
             }
-                .background(Theme.background)
+                .slurmyContentBackground()
                 .navigationTitle("Jobs")
                 .inlineNavTitle()
                 // Keine opaken Nav-Bar-Hintergründe mehr: Die System-Bars
@@ -952,7 +952,7 @@ struct JobsView: View {
             } c: {
                 gpuHoursCardView
             }
-            .background(Theme.background)
+            .slurmyContentBackground()
             .focusable()
             .focusEffectDisabled()
             .focused($focusedPane, equals: .inspector)
@@ -1880,7 +1880,7 @@ struct JobsView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .slurmyContentBackground()
         .refreshable { await vm.refresh() }   // Pull-to-refresh (touch)
         .redacted(reason: initialLoad ? .placeholder : [])
         .overlay {
@@ -2323,7 +2323,7 @@ struct JobsView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .slurmyContentBackground()
         .focused($focusedPane, equals: .table)
         .focusable()
         .focusEffectDisabled()
