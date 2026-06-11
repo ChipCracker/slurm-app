@@ -945,6 +945,10 @@ struct JobsView: View {
                     .paneFocusRing(focusedPane == .detail)
             }
         } right: {
+            // Inspector-Spalte: KEIN äußerer ScrollView. Die drei Regionen
+            // füllen zusammen exakt die Spaltenhöhe (ResizableVSplit3); lange
+            // Inhalte (viele Partitionen, GPU-Hours-Rangliste) scrollen
+            // INNERHALB ihrer Region — die Trenner sind ziehbar/persistiert.
             ResizableVSplit3 {
                 gpuAllocationCardView
             } b: {
@@ -961,7 +965,12 @@ struct JobsView: View {
     }
 
     private static let leftMinTop: CGFloat = 140
-    private static let leftMinBottom: CGFloat = 170
+    /// Mindesthöhe des Detail-Panes. Seit das Detail auf macOS nicht mehr
+    /// außen scrollt (siehe JobDetailView.macDetailLayout), braucht es Platz
+    /// für den fixen Header, die Log-Kartenköpfe und die Aktionszeile —
+    /// bei den früheren 170 pt wären die unteren Elemente unerreichbar
+    /// abgeschnitten (vorher rettete der Außen-Scroll sie).
+    private static let leftMinBottom: CGFloat = 260
 
     /// Estimated height of the jobs table at `rows` rows (filter bar + header +
     /// rows). Used to cap the table to its content so a short list leaves no

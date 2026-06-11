@@ -39,29 +39,13 @@ struct SettingsView: View {
         NavigationStack {
             ZStack {
                 SlurmyPaneBackground().ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 16) {
-                        brandingHeader
-                        appearanceCard
-                        colorThemeCard
-                        if activeColorTheme.allowsAccentOverride {
-                            themeCard
-                        }
-                        CustomColorsCard()
-                        jobsListCard
-                        if dashboardAvailable {
-                            dashboardCard
-                        }
-                        textSizeCard
-                        connectionCard
-                        pingCard
-                        actionsCard
-                        aboutFooter
-                    }
-                    .padding()
-                    .frame(maxWidth: 560)
-                    .frame(maxWidth: .infinity)
-                }
+                #if os(macOS)
+                // Viewport-Layout: Die Seite scrollt nie — die Karten-Spalten
+                // füllen den sichtbaren Platz, Überlänge scrollt in der Karte.
+                macLayout
+                #else
+                iosLayout
+                #endif
             }
             .navigationTitle("Einstellungen")
             // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
@@ -76,8 +60,144 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: – Branding header
+    // MARK: – Layout (macOS: Viewport-Raster / iOS: scrollende Seite)
 
+    #if os(macOS)
+    /// macOS füllt den Viewport komplett: drei Karten-Spalten teilen sich
+    /// Breite und Höhe (flexible Frames statt GeometryReader), darunter eine
+    /// kompakte „Über“-Leiste über die volle Breite. Karten mit viel Inhalt
+    /// (Darstellung, Themen-Grid, Eigene Farben, Dashboard) bekommen
+    /// `maxHeight: .infinity` und scrollen INNERHALB ihrer Karte (der
+    /// Kartenkopf bleibt stehen, s. `SettingsSection`); kompakte Karten
+    /// behalten per `fixedSize` ihre natürliche Höhe. Optimiert auf die
+    /// Fenster-Minimalgröße 1100×720 — wird es enger, scrollt die einzelne
+    /// Karte, nie die Seite.
+    private var macLayout: some View {
+        VStack(spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                // Spalte 1 — Darstellung & Verhalten
+                VStack(spacing: 16) {
+                    appearanceCard
+                        .frame(maxHeight: .infinity)
+                    jobsListCard
+                        .fixedSize(horizontal: false, vertical: true)
+                    textSizeCard
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Spalte 2 — Themes & Farben
+                VStack(spacing: 16) {
+                    colorThemeCard
+                        .frame(maxHeight: .infinity)
+                    if activeColorTheme.allowsAccentOverride {
+                        themeCard
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    // „Eigene Farben“ bringt eigenes Karten-Chrome mit
+                    // (SettingsCustomColors.swift) — hier nur der scrollende
+                    // Slot, damit die Spalte nie über den Viewport wächst.
+                    ScrollView {
+                        CustomColorsCard()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Spalte 3 — Dashboard & Verbindung
+                VStack(spacing: 16) {
+                    dashboardCard // auf macOS immer verfügbar
+                        .frame(maxHeight: .infinity)
+                    connectionCard
+                        .fixedSize(horizontal: false, vertical: true)
+                    pingCard
+                        .fixedSize(horizontal: false, vertical: true)
+                    actionsCard
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            aboutBar
+        }
+        .padding(16)
+    }
+
+    /// Branding (Icon, Name, Claim) und die „Über“-Zeilen (Version, Slogan,
+    /// Read-only-Hinweis) als kompakte Glas-Leiste über die volle Breite —
+    /// ersetzt auf macOS den Branding-Header und den Footer der iOS-Seite.
+    private var aboutBar: some View {
+        HStack(spacing: 12) {
+            Image(nsImageOrUIImageNamed: "AppIconPreview")
+                .resizable()
+                .frame(width: 36, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 0.5)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Slurmy \(appVersion) (\(appBuild))")
+                    .font(.caption.monospaced().bold())
+                    .foregroundColor(Theme.textPrimary)
+                Text("Slurm-Client für iPhone, iPad & Mac")
+                    .font(.caption2)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 2) {
+                // Marken-Slogan, bewusst englisch (Brand-Asset).
+                Text("Clusters, simplified. Beautifully.")
+                    .font(.caption.italic())
+                    .foregroundColor(Theme.textSecondary)
+                Text("Read-only by default · mutierende Befehle nur nach Bestätigung")
+                    .font(.caption2)
+                    .foregroundColor(Theme.textSecondary.opacity(0.8))
+            }
+            Image("SlurmyMascot")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 40)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .environment(\.insideGlassPanel, true)
+        .slurmyGlass(cornerRadius: 14, tint: Theme.glassTint)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    #else
+    /// iOS: unveränderte scrollende Seite (eine Spalte, System-Scroll).
+    private var iosLayout: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                brandingHeader
+                appearanceCard
+                colorThemeCard
+                if activeColorTheme.allowsAccentOverride {
+                    themeCard
+                }
+                CustomColorsCard()
+                jobsListCard
+                if dashboardAvailable {
+                    dashboardCard
+                }
+                textSizeCard
+                connectionCard
+                pingCard
+                actionsCard
+                aboutFooter
+            }
+            .padding()
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
+        }
+    }
+    #endif
+
+    // MARK: – Branding header (nur iOS — macOS nutzt die „Über“-Leiste)
+
+    #if os(iOS)
     private var brandingHeader: some View {
         VStack(spacing: 10) {
             Image(nsImageOrUIImageNamed: "AppIconPreview")
@@ -99,6 +219,7 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
     }
+    #endif
 
     // MARK: – Appearance
 
@@ -516,7 +637,8 @@ struct SettingsView: View {
 
     /// "Über Slurmy"-Footer: kleines Maskottchen, App-Name + Version und der
     /// Marken-Slogan (bewusst englisch, Brand-Asset). Bewusst keine Karte —
-    /// wie der bisherige Footer.
+    /// wie der bisherige Footer. Nur iOS — macOS nutzt die „Über“-Leiste.
+    #if os(iOS)
     private var aboutFooter: some View {
         VStack(spacing: 6) {
             Image("SlurmyMascot")
@@ -541,6 +663,7 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
     }
+    #endif
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
@@ -568,10 +691,22 @@ struct SettingsView: View {
     SettingsView()
         .environmentObject(AppState())
         .environmentObject(DashboardStore())
+        // macOS: Fenster-Minimalgröße (Viewport-Raster), iOS: schmale Seite.
+        #if os(macOS)
+        .frame(width: 1100, height: 720)
+        #else
         .frame(width: 420, height: 900)
+        #endif
 }
 
-/// Titled card used to group related settings, matching the app's card style.
+/// Titled card used to group related settings. Karten-Chrome ist Liquid
+/// Glass (`.slurmyGlass`, Tönung aus dem Theme) — auf macOS 14/15 bzw. bei
+/// deaktiviertem Glas-Schalter rendert der Helfer automatisch den
+/// Frost-Fallback. `insideGlassPanel` verhindert Glas-auf-Glas bei
+/// verschachtelten Glas-Buttons; System-Controls (Toggle, Slider, Picker)
+/// behalten ihre nativen Styles. Auf macOS scrollt der Inhalt bei Platznot
+/// INNERHALB der Karte (die Kopfzeile bleibt stehen) — die Settings-Seite
+/// selbst scrollt dort nie; auf iOS scrollt wie bisher die ganze Seite.
 private struct SettingsSection<Content: View>: View {
     let title: String
     let systemImage: String
@@ -587,10 +722,24 @@ private struct SettingsSection<Content: View>: View {
                     .font(.headline)
                     .foregroundColor(Theme.textPrimary)
             }
+            #if os(macOS)
+            // Viewport-Raster: Überlanger Inhalt scrollt in der Karte. In
+            // Karten mit natürlicher Höhe (`fixedSize` im Spalten-Layout)
+            // verhält sich der ScrollView neutral — ideale Höhe = Inhalt.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    content()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            #else
             content()
+            #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardStyle()
+        .padding(16)
+        .environment(\.insideGlassPanel, true)
+        .slurmyGlass(cornerRadius: 14, tint: Theme.glassTint)
     }
 }
 

@@ -236,6 +236,14 @@ struct JobDetailView: View {
     @State private var cancelRequested = false
     /// True, während der scancel-Roundtrip auf der seriellen SSH-Queue läuft.
     @State private var cancelInFlight = false
+    #if os(macOS)
+    /// Gemessene natürliche Höhe des Kopfblocks (Stats + Live-GPU + Skript).
+    /// Deckelt den internen Kopf-Scroll exakt auf seinen Inhalt („hug"), damit
+    /// unter kurzen Inhalten kein Leerraum klafft und die Log-Karten sofort
+    /// nachrücken. Startwert .infinity: bis zur ersten Messung greift nur das
+    /// 45-%-Cap aus `macDetailLayout`.
+    @State private var headBlockHeight: CGFloat = .infinity
+    #endif
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -266,38 +274,11 @@ struct JobDetailView: View {
     var body: some View {
         ZStack {
             SlurmyPaneBackground().ignoresSafeArea()
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        header.id("header")
-                        statsGrid
-                        if showsLiveGpu {
-                            liveStatsCard.id("liveGpu")
-                        }
-                        scriptSection(initialLoading: !vm.scriptLoaded)
-                        logSection(
-                            title: "stderr", body: vm.stderr, color: Theme.danger,
-                            initialLoading: !vm.logsLoaded
-                        )
-                        logSection(
-                            title: "stdout", body: vm.stdout, color: Theme.success,
-                            initialLoading: !vm.logsLoaded
-                        ).id("logs")
-                        if let msg = actionMessage {
-                            ErrorBanner(message: msg, tint: Theme.warning)
-                        }
-                        if let err = vm.error {
-                            ErrorBanner(message: err)
-                        }
-                        actions
-                    }
-                    .padding()
-                }
-                #if os(iOS)
-                .refreshable { await vm.load() }   // Pull-to-refresh (touch)
-                #endif
-                .background(detailShortcuts(proxy: proxy))
-            }
+            #if os(macOS)
+            macDetailLayout
+            #else
+            scrollingDetailLayout
+            #endif
         }
         .task {
             vm.bind(appState)
@@ -345,6 +326,104 @@ struct JobDetailView: View {
             expandActiveLog()
         }
     }
+
+    #if os(macOS)
+    /// macOS: „Kein Außen-Scrollen" — die Detailseite scrollt nie selbst,
+    /// sondern füllt das Pane exakt. Der Header bleibt fix oben; der Kopfblock
+    /// (Stats + Live-GPU + Skript) steht normalerweise ebenfalls fix und
+    /// scrollt nur dann INTERN, wenn das Fenster zu klein wird (gedeckelt auf
+    /// ~45 % der Pane-Höhe). Die Log-Karten bekommen den gesamten Restplatz,
+    /// teilen ihn sich und scrollen jeweils in sich; Banner + Aktionen bleiben
+    /// fix am unteren Rand.
+    private var macDetailLayout: some View {
+        GeometryReader { geo in
+            ScrollViewReader { proxy in
+                VStack(alignment: .leading, spacing: 16) {
+                    header
+                    headBlock(capHeight: geo.size.height * 0.45)
+                    // Log-Bereich: nimmt den gesamten Restplatz. stderr/stdout
+                    // sind beide flexibel (maxHeight .infinity), teilen sich
+                    // die Höhe und ihr Text scrollt INNERHALB der Karte.
+                    VStack(alignment: .leading, spacing: 16) {
+                        logSection(
+                            title: "stderr", body: vm.stderr, color: Theme.danger,
+                            initialLoading: !vm.logsLoaded, flexible: true
+                        )
+                        logSection(
+                            title: "stdout", body: vm.stdout, color: Theme.success,
+                            initialLoading: !vm.logsLoaded, flexible: true
+                        )
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    if let msg = actionMessage {
+                        ErrorBanner(message: msg, tint: Theme.warning)
+                    }
+                    if let err = vm.error {
+                        ErrorBanner(message: err)
+                    }
+                    actions
+                }
+                .padding()
+                .background(detailShortcuts(proxy: proxy))
+            }
+        }
+    }
+
+    /// Kopfblock unter dem Header. Hugged seine natürliche Höhe (Messung via
+    /// onGeometryChange); wird er höher als `capHeight` bzw. als der vom
+    /// VStack angebotene Platz, scrollt NUR dieser Block intern — nie die Seite.
+    private func headBlock(capHeight: CGFloat) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                statsGrid
+                if showsLiveGpu {
+                    liveStatsCard.id("liveGpu")
+                }
+                scriptSection(initialLoading: !vm.scriptLoaded)
+            }
+            // Natürliche Inhaltshöhe messen — das `maxHeight` unten deckelt
+            // den (greedy) ScrollView exakt darauf, sonst würde er unter
+            // kurzen Inhalten Leerraum bis zum Cap reservieren.
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { headBlockHeight = $0 }
+        }
+        .frame(maxHeight: min(headBlockHeight, capHeight))
+    }
+    #else
+    /// iOS unverändert: die Gesamtseite scrollt außen (Touch-Idiom inkl.
+    /// Pull-to-Refresh); die v/l-Sprünge nutzen den äußeren Scroll-Proxy.
+    private var scrollingDetailLayout: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    header.id("header")
+                    statsGrid
+                    if showsLiveGpu {
+                        liveStatsCard.id("liveGpu")
+                    }
+                    scriptSection(initialLoading: !vm.scriptLoaded)
+                    logSection(
+                        title: "stderr", body: vm.stderr, color: Theme.danger,
+                        initialLoading: !vm.logsLoaded
+                    )
+                    logSection(
+                        title: "stdout", body: vm.stdout, color: Theme.success,
+                        initialLoading: !vm.logsLoaded
+                    ).id("logs")
+                    if let msg = actionMessage {
+                        ErrorBanner(message: msg, tint: Theme.warning)
+                    }
+                    if let err = vm.error {
+                        ErrorBanner(message: err)
+                    }
+                    actions
+                }
+                .padding()
+            }
+            .refreshable { await vm.load() }   // Pull-to-refresh (touch)
+            .background(detailShortcuts(proxy: proxy))
+        }
+    }
+    #endif
 
     /// Open the more relevant of the two log windows: stderr when it has
     /// content (errors are what you usually want to read), otherwise stdout.
@@ -721,11 +800,15 @@ struct JobDetailView: View {
         }
     }
 
+    /// `flexible` (macOS, „Kein Außen-Scrollen"): Die Karte nimmt ihren Anteil
+    /// am Log-Bereich ein und der Inhalt scrollt in der Karte; ohne Flag
+    /// (iOS-Außen-Scroll) behält sie die fixe 260-pt-Höhe. Die Skeleton-Karte
+    /// bleibt in beiden Modi bei natürlicher Höhe (oben ausgerichtet).
     @ViewBuilder
-    private func logSection(title: String, body: String, color: Color, initialLoading: Bool) -> some View {
+    private func logSection(title: String, body: String, color: Color, initialLoading: Bool, flexible: Bool = false) -> some View {
         Group {
             if !body.isEmpty {
-                logCard(title: title, body: body, color: color)
+                logCard(title: title, body: body, color: color, flexible: flexible)
                     .transition(.opacity.combined(with: .scale(scale: 0.99)))
             } else if initialLoading {
                 skeletonLogCard(title: title, color: color)
@@ -848,7 +931,7 @@ struct JobDetailView: View {
         )
     }
 
-    private func logCard(title: String, body: String, color: Color) -> some View {
+    private func logCard(title: String, body: String, color: Color, flexible: Bool = false) -> some View {
         let path = (title == "stderr") ? vm.stderrPath : vm.stdoutPath
         let stream: LogStream = (title == "stderr") ? .stderr : .stdout
         return VStack(alignment: .leading, spacing: 8) {
@@ -902,7 +985,9 @@ struct JobDetailView: View {
                         .textSelection(.enabled)
                         .id("logBottom-\(title)")
                 }
-                .frame(maxHeight: 260)
+                // Flexibel: füllt den Kartenanteil am Log-Bereich (macOS,
+                // siehe macDetailLayout) — sonst fixe 260 pt wie gehabt.
+                .frame(maxHeight: flexible ? .infinity : 260)
                 .onChange(of: body) { _, _ in
                     if vm.followMode {
                         withMotion(.linear(duration: 0.15)) {
@@ -964,6 +1049,11 @@ struct JobDetailView: View {
     }
 
     /// Hidden buttons binding `f`/`v`/`l`/`Y` inside the detail pane.
+    /// macOS (kein Außen-Scroll): `v` scrollt den KOPFBLOCK intern zur
+    /// Live-GPU-Karte (der Proxy findet die ID in der nächstgelegenen
+    /// ScrollView); `l` springt ans Ende (neueste Zeilen) des aktiven Logs —
+    /// die Log-Karten selbst sind permanent sichtbar. iOS behält die
+    /// bisherigen Sprünge im äußeren Seiten-Scroll.
     private func detailShortcuts(proxy: ScrollViewProxy) -> some View {
         ZStack {
             Shortcut.hiddenButton(.toggleFollow) {
@@ -974,7 +1064,14 @@ struct JobDetailView: View {
                 withMotion { proxy.scrollTo("liveGpu", anchor: .top) }
             }
             Shortcut.hiddenButton(.focusLogs) {
+                #if os(macOS)
+                // Aktives Log wie in expandActiveLog bestimmen (Platzhalter
+                // zählen nicht als Inhalt) und IN der Karte ans Ende springen.
+                let active = vm.stderrHasContent ? "stderr" : "stdout"
+                withMotion { proxy.scrollTo("logBottom-\(active)", anchor: .bottom) }
+                #else
                 withMotion { proxy.scrollTo("logs", anchor: .top) }
+                #endif
             }
             Shortcut.hiddenButton(.copyActiveLog) {
                 // Wie expandActiveLog: Platzhalter ("[stderr ist (noch) leer]…")

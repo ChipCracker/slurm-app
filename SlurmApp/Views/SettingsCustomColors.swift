@@ -30,7 +30,11 @@ struct CustomColorsCard: View {
                 .font(.caption).foregroundColor(Theme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardStyle()
+        // Glas-Chrome wie die SettingsSection-Karten (Frost-Fallback macht der
+        // Helfer); Controls darin de-glasen sich über das Environment-Flag.
+        .environment(\.insideGlassPanel, true)
+        .padding(16)
+        .slurmyGlass(cornerRadius: 14, tint: Theme.glassTint)
     }
 }
 
