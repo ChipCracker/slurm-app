@@ -3,6 +3,13 @@ import Foundation
 enum SlurmParser {
     static let squeueFormat = "%i|%j|%u|%t|%P|%q|%b|%C|%m|%M|%N|%r"
 
+    // Einmal kompiliert statt pro Aufruf: gpuCount läuft pro squeue-/sinfo-Zeile
+    // im 10-s-Poll (clusterweit), das Neu-Kompilieren des Patterns war reiner
+    // CPU-Overhead im SlurmService-Actor.
+    private static let gpuRegex = try! NSRegularExpression(
+        pattern: #"gpu(?::[^:,()\s]+)?:(\d+)"#, options: [.caseInsensitive]
+    )
+
     /// Sum of GPU counts in a GRES/TRES string ("gpu:a100:4", "gpu:2",
     /// "gpu:a100:2,gpu:mig:1" → 4/2/3). All `gpu[:type]:N` occurrences are summed
     /// so heterogeneous requests count fully, not just the first.
@@ -10,12 +17,10 @@ enum SlurmParser {
     /// `--gpus=N` and no per-node spec can legitimately report 0 here — that is a
     /// Slurm display limitation, not a parsing miss.
     static func gpuCount(inGres gres: String) -> Int {
-        guard gres.lowercased().contains("gpu") else { return 0 }
+        guard gres.range(of: "gpu", options: .caseInsensitive) != nil else { return 0 }
         let ns = gres as NSString
-        let re = try? NSRegularExpression(pattern: #"gpu(?::[^:,()\s]+)?:(\d+)"#, options: [.caseInsensitive])
-        guard let re else { return 0 }
         var total = 0
-        for m in re.matches(in: gres, range: NSRange(location: 0, length: ns.length)) {
+        for m in gpuRegex.matches(in: gres, range: NSRange(location: 0, length: ns.length)) {
             total += Int(ns.substring(with: m.range(at: 1))) ?? 0
         }
         return total
@@ -114,6 +119,11 @@ enum SlurmParser {
         return order.map { PartitionGpu(partition: $0, gpuType: types[$0] ?? "—", totalGpus: totals[$0] ?? 0) }
     }
 
+    /// Key-Start-Pattern für scontrol-Ausgaben — einmal kompiliert (s. gpuRegex).
+    private static let scontrolKeyStartRegex = try! NSRegularExpression(
+        pattern: #"(?:^|\s)([A-Za-z][A-Za-z0-9_/:.\-]*)="#
+    )
+
     /// Parses scontrol show job/partition output.
     /// Tokens are space-separated `Key=Value` pairs, possibly multiline.
     /// Values can contain `=` but tokens themselves don't span spaces.
@@ -126,9 +136,7 @@ enum SlurmParser {
         // start or whitespace) and take the value up to the NEXT key start.
         // Values never span a newline. `cpu=4,mem=16G` inside a value is safe:
         // those `=` aren't preceded by whitespace, so they aren't key starts.
-        guard let keyStart = try? NSRegularExpression(pattern: #"(?:^|\s)([A-Za-z][A-Za-z0-9_/:.\-]*)="#) else {
-            return out
-        }
+        let keyStart = scontrolKeyStartRegex
         for rawLine in text.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
             let line = String(rawLine)
             let ns = line as NSString

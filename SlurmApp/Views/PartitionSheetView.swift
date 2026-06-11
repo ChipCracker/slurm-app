@@ -20,6 +20,11 @@ struct PartitionSheetView: View {
     // Set, not a single slot: expanding two nodes quickly used to clobber each
     // other's spinner (the first's defer cleared the shared flag).
     @State private var loadingNodes: Set<String> = []
+    /// JobsViewModel.loadPartition schluckt Fetch-Fehler (try?) und meldet
+    /// keinen Fehlerzustand — ohne Frist bliebe der Spinner bei einem
+    /// fehlgeschlagenen sinfo/scontrol ewig stehen. Nach Ablauf zeigt das Sheet
+    /// stattdessen Fehlertext + "Erneut versuchen".
+    @State private var loadTimedOut = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,13 +43,45 @@ struct PartitionSheetView: View {
                         scontrolCard
                     }
                     if nodes.isEmpty && details.isEmpty {
-                        SlurmyLoadingState(caption: "Lade Partition-Details…")
-                            .padding(.vertical, 60)
+                        if loadTimedOut {
+                            loadFailedState
+                        } else {
+                            SlurmyLoadingState(caption: "Lade Partition-Details…")
+                                .padding(.vertical, 60)
+                                .task {
+                                    // Großzügige Frist: der Fetch teilt sich die
+                                    // serielle SSH-Queue mit den Polls. Kommt bis
+                                    // dahin nichts an, war der Fetch (still)
+                                    // fehlgeschlagen.
+                                    try? await Task.sleep(nanoseconds: 12_000_000_000)
+                                    if !Task.isCancelled { loadTimedOut = true }
+                                }
+                        }
                     }
                 }
                 .padding(24)
             }
         }
+    }
+
+    /// Fehler + Retry statt Endlos-Spinner (gleiche Optik wie in
+    /// NodesOverviewView / GpuHoursSheetView).
+    private var loadFailedState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundColor(Theme.danger)
+            Text("Partition-Details konnten nicht geladen werden — Verbindung prüfen.")
+                .font(.callout)
+                .foregroundColor(Theme.danger)
+                .multilineTextAlignment(.center)
+            Button("Erneut versuchen") {
+                loadTimedOut = false
+                onRefresh()
+            }
+            .slurmyGlassButton()
+        }
+        .padding(.vertical, 60)
     }
 
     // MARK: – Header
@@ -136,10 +173,12 @@ struct PartitionSheetView: View {
                 Spacer()
             }
             Divider().background(Theme.hairline)
+            // Vokabular deckungsgleich mit der GPU-Legende (GpuComponents):
+            // „meine" / „preemptierbar" / „belegt" / „frei".
             HStack(spacing: 18) {
-                metric("\(u.ownAllocated)", "mine", Theme.ownNonPreempt)
-                metric("\(u.preemptible)", "preemptible", Theme.ownPreempt)
-                metric("\(u.otherAllocated)", "other", Theme.otherNonPreempt)
+                metric("\(u.ownAllocated)", "meine", Theme.ownNonPreempt)
+                metric("\(u.preemptible)", "preemptierbar", Theme.ownPreempt)
+                metric("\(u.otherAllocated)", "belegt", Theme.otherNonPreempt)
                 metric("\(u.availableGpus)", "frei", Theme.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -178,9 +217,16 @@ struct PartitionSheetView: View {
             VStack(spacing: 8) {
                 ForEach(nodes) { node in
                     VStack(spacing: 0) {
-                        nodeRow(node)
-                            .contentShape(Rectangle())
-                            .onTapGesture { toggleNode(node.name) }
+                        // Button statt onTapGesture: Button-Trait + Aktion, damit
+                        // die Node-Details auch per VoiceOver erreichbar sind.
+                        Button {
+                            toggleNode(node.name)
+                        } label: {
+                            nodeRow(node)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("GPU-Details ein-/ausblenden")
                         if expanded.contains(node.name) {
                             nodeDetailBlock(node)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -190,7 +236,7 @@ struct PartitionSheetView: View {
                 }
             }
         }
-        .animation(.snappy(duration: 0.2), value: expanded)
+        .motion(.snappy(duration: 0.2), value: expanded)
         .padding(20)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(

@@ -60,6 +60,11 @@ final class JobDetailViewModel: ObservableObject {
     // so a concurrent call returns instead of double-issuing SSH commands.
     private var statsInFlight = false
     private var logsInFlight = false
+    /// MaxRSS bewegt sich im Minutentakt — eigene, langsamere Kadenz als die
+    /// 5s-GPU-Stats, damit `sstat` (für Nicht-Batch-Jobs bis zu zwei Aufrufe)
+    /// nicht jeden Tick die serielle SSH-Queue belegt.
+    private var lastRssFetch: Date = .distantPast
+    static let rssRefreshInterval: TimeInterval = 30
 
     init(job: Job) { self.job = job }
 
@@ -76,7 +81,7 @@ final class JobDetailViewModel: ObservableObject {
         // detail pane opened while disconnected would shimmer forever.
         defer {
             if !initialLoadDone {
-                withAnimation(.smooth(duration: 0.4)) { initialLoadDone = true }
+                withMotion(.smooth(duration: 0.4)) { initialLoadDone = true }
             }
         }
         guard let slurm = appState?.slurm else { return }
@@ -93,7 +98,7 @@ final class JobDetailViewModel: ObservableObject {
         // slow/stuck command on the shared, serialized SSH link can't keep the
         // whole detail shimmering forever.
         if !initialLoadDone {
-            withAnimation(.smooth(duration: 0.4)) { initialLoadDone = true }
+            withMotion(.smooth(duration: 0.4)) { initialLoadDone = true }
         }
 
         // Logs use the paths from `details`; render an "(no log path)" card
@@ -144,13 +149,20 @@ final class JobDetailViewModel: ObservableObject {
         let rawErr = details?.stdErr.flatMap { $0 == "(null)" ? nil : $0 }
         let outPath = rawOut.map { expandSlurmPath($0) }
         let errPath = rawErr.map { expandSlurmPath($0) }
-        self.stdoutPath = outPath
-        self.stderrPath = errPath
+        // Nur bei echter Änderung publizieren (Gegenstück zum Diff in
+        // JobsViewModel.refresh): Im Follow-Mode liefert tailLog meist
+        // dieselben 200 Zeilen — ohne die Guards würde jeder 5s-Tick die
+        // gesamte Detail-Ansicht (inkl. der Monospace-Log-Texte) mehrfach
+        // neu rendern, obwohl sich nichts geändert hat.
+        if self.stdoutPath != outPath { self.stdoutPath = outPath }
+        if self.stderrPath != errPath { self.stderrPath = errPath }
 
         let out = await readLog(slurm: slurm, path: outPath, stream: "stdout")
         let err = await readLog(slurm: slurm, path: errPath, stream: "stderr")
-        self.stdout = out.text;  self.stdoutHasContent = out.hasContent
-        self.stderr = err.text;  self.stderrHasContent = err.hasContent
+        if self.stdout != out.text { self.stdout = out.text }
+        if self.stdoutHasContent != out.hasContent { self.stdoutHasContent = out.hasContent }
+        if self.stderr != err.text { self.stderr = err.text }
+        if self.stderrHasContent != err.hasContent { self.stderrHasContent = err.hasContent }
     }
 
     private func readLog(slurm: SlurmService, path: String?, stream: String) async -> (text: String, hasContent: Bool) {
@@ -188,12 +200,22 @@ final class JobDetailViewModel: ObservableObject {
         guard let slurm = appState?.slurm, job.isRunning else { return }
         do {
             let stats = try await slurm.liveGpuStats(jobId: job.jobId)
-            self.gpuStats = stats
-            self.liveError = nil
+            // Diff vor dem Publish — siehe refreshLogs: bei ruhigen Jobs ist
+            // die nvidia-smi-Ausgabe oft tick-für-tick identisch.
+            if stats != gpuStats { self.gpuStats = stats }
+            if liveError != nil { self.liveError = nil }
         } catch {
-            self.liveError = error.localizedDescription
+            let msg = error.localizedDescription
+            if liveError != msg { self.liveError = msg }
         }
-        self.maxRssMB = try? await slurm.fetchJobMemoryMB(job.jobId)
+        // MaxRSS höchstens alle 30s statt jeden 5s-Tick abfragen — fetchJobMemoryMB
+        // probiert "<id>.batch" UND "<id>", also bis zu zwei sstat-Roundtrips,
+        // die sonst die serielle SSH-Queue vor Nutzeraktionen blockieren.
+        if Date().timeIntervalSince(lastRssFetch) >= Self.rssRefreshInterval {
+            lastRssFetch = Date()
+            let rss = try? await slurm.fetchJobMemoryMB(job.jobId)
+            if maxRssMB != rss { self.maxRssMB = rss }
+        }
     }
 }
 
@@ -207,6 +229,13 @@ struct JobDetailView: View {
     @StateObject private var vm: JobDetailViewModel
     @State private var showCancelConfirm = false
     @State private var actionMessage: String?
+    /// Optimistischer Cancel-Zustand: Nach erfolgreichem scancel zeigt der
+    /// Header CANCELLING… und der Button bleibt entwaffnet, bis der Jobs-Poll
+    /// einen echten Statuswechsel liefert — sonst bliebe der Job bis zu 10s
+    /// scheinbar RUNNING und ein zweites scancel möglich.
+    @State private var cancelRequested = false
+    /// True, während der scancel-Roundtrip auf der seriellen SSH-Queue läuft.
+    @State private var cancelInFlight = false
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -294,8 +323,13 @@ struct JobDetailView: View {
         // the header/runtime tick, PD→R reveals the live-GPU card and starts the
         // poll, and a finished job stops the 5s srun loop instead of hammering a
         // dead allocation forever.
-        .onChange(of: job) { _, newJob in
+        .onChange(of: job) { oldJob, newJob in
             if vm.job != newJob { vm.job = newJob }
+            // Echter Statuswechsel vom Poll → der optimistische
+            // CANCELLING-Zustand ist erledigt, Slurm-Status zeigt wieder.
+            if cancelRequested && oldJob.state != newJob.state {
+                cancelRequested = false
+            }
         }
         .alert("Job abbrechen?", isPresented: $showCancelConfirm) {
             Button("Abbrechen", role: .cancel) {}
@@ -333,9 +367,9 @@ struct JobDetailView: View {
                         Button("Name kopieren") { Clipboard.copy(vm.job.name) }
                     }
                 Spacer()
-                Text(vm.job.state).font(.caption.bold()).foregroundColor(Theme.stateColor(vm.job.state))
+                Text(displayedState).font(.caption.bold()).foregroundColor(displayedStateColor)
                     .contentTransition(.opacity)
-                    .motion(Motion.smooth, value: vm.job.state)
+                    .motion(Motion.smooth, value: displayedState)
                 Button {
                     bookmarks.add(Bookmark(jobId: vm.job.jobId, label: vm.job.name))
                     actionMessage = "Bookmark gespeichert."
@@ -411,6 +445,9 @@ struct JobDetailView: View {
                 .background(color.opacity(0.18))
                 .foregroundColor(color)
                 .clipShape(Capsule())
+                // Einziger Weg, QoS/Partition für einen Einzeljob per Touch zu
+                // ändern — die ~24pt-Kapsel allein verfehlt Apples 44pt-Minimum.
+                .iosTouchTarget()
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -432,12 +469,15 @@ struct JobDetailView: View {
                 alignment: .leading,
                 spacing: 6
             ) {
-                compactStat("Runtime", vm.job.runtime)
+                // Begriffe deckungsgleich mit Tabelle/Sortmenü: „Laufzeit",
+                // „Speicher", „Node", „User", „Grund" — Slurm-Jargon (QoS,
+                // Account, MaxRSS, Limit) bleibt unübersetzt.
+                compactStat("Laufzeit", vm.job.runtime)
                 compactStat("Limit",
                             vm.details?.timeLimit ?? "00:00:00",
                             isSkeleton: vm.details?.timeLimit == nil && pending)
-                compactStat("Memory", vm.job.memory)
-                compactStat("Nodes", vm.job.node)
+                compactStat("Speicher", vm.job.memory)
+                compactStat("Node", vm.job.node)
                 compactStat("User", vm.job.user)
                 compactStat("Account",
                             vm.details?.account ?? "—",
@@ -448,7 +488,7 @@ struct JobDetailView: View {
                     compactStat("MaxRSS", "0.0 GB", isSkeleton: true)
                 }
                 if !vm.job.reason.isEmpty {
-                    compactStat("Reason", vm.job.reason)
+                    compactStat("Grund", vm.job.reason)
                 }
             }
             if let cmd = vm.details?.command {
@@ -478,7 +518,7 @@ struct JobDetailView: View {
         }
         .redacted(reason: isSkeleton ? .placeholder : [])
         .shimmering(isSkeleton)
-        .animation(.smooth(duration: 0.4), value: value)
+        .motion(.smooth(duration: 0.4), value: value)
     }
 
     @ViewBuilder
@@ -557,10 +597,10 @@ struct JobDetailView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.99)))
                     // Animate value changes on each 5s refresh: bars glide to
                     // the new util/mem, numbers roll (see .contentTransition).
-                    .animation(.smooth(duration: 0.5), value: vm.gpuStats)
+                    .motion(.smooth(duration: 0.5), value: vm.gpuStats)
                 }
             }
-            .animation(.smooth(duration: 0.4), value: vm.gpuStats.isEmpty)
+            .motion(.smooth(duration: 0.4), value: vm.gpuStats.isEmpty)
         }
         .padding(18)
         .background(
@@ -649,7 +689,16 @@ struct JobDetailView: View {
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4).fill(Theme.background.opacity(0.6))
+                    // Hairline um den Track: In hellen Themes liegt der Track
+                    // (background ≈ surfaceElevated) sonst unsichtbar auf der
+                    // Karte, und bei niedrigen Ratios (graue Füllung, siehe
+                    // Theme.gpuUtilColor) wirkt der ganze Balken leer.
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Theme.background.opacity(0.6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(Theme.border, lineWidth: 1)
+                        )
                     RoundedRectangle(cornerRadius: 4)
                         .fill(color)
                         .frame(width: max(3, CGFloat(min(1, max(0, ratio))) * geo.size.width))
@@ -806,19 +855,27 @@ struct JobDetailView: View {
             HStack {
                 // Circle + title + expand glyph form one click target that
                 // opens the full-size log modal. Kept off the body text so it
-                // doesn't fight `.textSelection`.
-                HStack(spacing: 8) {
-                    Circle().fill(color).frame(width: 8, height: 8)
-                    Text(title).font(.headline).foregroundColor(Theme.textPrimary)
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption2.bold())
-                        .foregroundColor(color)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
+                // doesn't fight `.textSelection`. Echter Button statt
+                // onTapGesture: Button-Trait + Aktion, damit das Log-Modal
+                // auch per VoiceOver erreichbar ist.
+                Button {
                     onExpandLog(LogModalSelection(vm: vm, stream: stream, jobId: vm.job.jobId))
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle().fill(color).frame(width: 8, height: 8)
+                        Text(title).font(.headline).foregroundColor(Theme.textPrimary)
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.caption2.bold())
+                            .foregroundColor(color)
+                    }
+                    // Einziger Touch-Weg zum Log-Modal (die Alternative, Leertaste,
+                    // braucht eine Hardware-Tastatur) → 44pt-Trefferfläche auf iOS.
+                    .iosTouchTarget()
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .help("Log vergrössert öffnen (Leertaste)")
+                .accessibilityLabel("\(title)-Log vergrössern")
                 if let p = path {
                     Text(p)
                         .font(.caption2.monospaced())
@@ -848,7 +905,7 @@ struct JobDetailView: View {
                 .frame(maxHeight: 260)
                 .onChange(of: body) { _, _ in
                     if vm.followMode {
-                        withAnimation(.linear(duration: 0.15)) {
+                        withMotion(.linear(duration: 0.15)) {
                             proxy.scrollTo("logBottom-\(title)", anchor: .bottom)
                         }
                     }
@@ -891,11 +948,16 @@ struct JobDetailView: View {
                 Button(role: .destructive) {
                     showCancelConfirm = true
                 } label: {
-                    Label("scancel", systemImage: "xmark.circle")
+                    Label(cancelRequested ? "scancel gesendet" : "scancel", systemImage: "xmark.circle")
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
                 }
+                // Entwaffnet, solange der Roundtrip läuft bzw. das scancel
+                // schon raus ist — verhindert ein doppeltes scancel, bis der
+                // Poll den echten Statuswechsel liefert.
+                .disabled(cancelInFlight || cancelRequested)
                 .background(Theme.danger.opacity(0.18))
                 .foregroundColor(Theme.danger)
+                .opacity(cancelInFlight || cancelRequested ? 0.5 : 1)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
@@ -909,16 +971,22 @@ struct JobDetailView: View {
                 actionMessage = "Follow-Mode: \(vm.followMode ? "an" : "aus")"
             }
             Shortcut.hiddenButton(.focusLiveGpu) {
-                withAnimation { proxy.scrollTo("liveGpu", anchor: .top) }
+                withMotion { proxy.scrollTo("liveGpu", anchor: .top) }
             }
             Shortcut.hiddenButton(.focusLogs) {
-                withAnimation { proxy.scrollTo("logs", anchor: .top) }
+                withMotion { proxy.scrollTo("logs", anchor: .top) }
             }
             Shortcut.hiddenButton(.copyActiveLog) {
-                let active = !vm.stderr.isEmpty ? vm.stderr : vm.stdout
+                // Wie expandActiveLog: Platzhalter ("[stderr ist (noch) leer]…")
+                // sind nie leer — nur Streams mit ECHTEM Inhalt kopieren, sonst
+                // landet Platzhaltertext statt des stdout in der Zwischenablage.
+                let active = vm.stderrHasContent ? vm.stderr
+                    : (vm.stdoutHasContent ? vm.stdout : "")
                 if !active.isEmpty {
                     Clipboard.copy(active)
                     actionMessage = "Log kopiert (\(active.count) Zeichen)."
+                } else {
+                    actionMessage = "Kein Log-Inhalt vorhanden."
                 }
             }
         }
@@ -939,11 +1007,28 @@ struct JobDetailView: View {
         isOwnJob && vm.job.isRunning && vm.job.gpus > 0
     }
 
+    /// Header-Status: nach gesendetem scancel optimistisch CANCELLING…, bis
+    /// der Jobs-Poll den echten Statuswechsel liefert.
+    private var displayedState: String {
+        cancelRequested ? "CANCELLING…" : vm.job.state
+    }
+
+    private var displayedStateColor: Color {
+        cancelRequested ? Theme.danger : Theme.stateColor(vm.job.state)
+    }
+
     private func cancel() async {
-        guard let slurm = appState.slurm else { return }
+        guard let slurm = appState.slurm, !cancelInFlight else { return }
+        cancelInFlight = true
+        defer { cancelInFlight = false }
         do {
             _ = try await slurm.cancelJob(vm.job.jobId)
+            // Optimistisch: Pill → CANCELLING…, Button entwaffnen und die
+            // Jobliste sofort aktualisieren statt bis zu 10s auf den
+            // nächsten stillen Poll zu warten (Listener: MainTabView).
+            cancelRequested = true
             actionMessage = "scancel gesendet."
+            NotificationCenter.default.post(name: .requestJobsRefresh, object: nil)
         } catch {
             actionMessage = "Fehler: \(error.localizedDescription)"
         }
@@ -966,6 +1051,9 @@ struct LogDetailSheetView: View {
     @ObservedObject var vm: JobDetailViewModel
     @State private var stream: LogStream
     @Environment(\.glassModalDismiss) private var dismiss
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     init(vm: JobDetailViewModel, stream: LogStream) {
         _vm = ObservedObject(wrappedValue: vm)
@@ -990,7 +1078,27 @@ struct LogDetailSheetView: View {
         )
     }
 
+    /// Kompakte Breite (iPhone): Die einzeilige Variante summiert sich auf
+    /// ~450pt fixe Elemente und schiebt Copy/Close vom Schirm — daher dort
+    /// zwei Zeilen (Titel + Schließen / Picker + Follow + Kopieren).
+    private var isCompactWidth: Bool {
+        #if os(iOS)
+        return horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
+
+    @ViewBuilder
     private var header: some View {
+        if isCompactWidth {
+            compactHeader
+        } else {
+            regularHeader
+        }
+    }
+
+    private var regularHeader: some View {
         HStack(spacing: 16) {
             ZStack {
                 Circle().fill(color.opacity(0.18)).frame(width: 48, height: 48)
@@ -998,63 +1106,105 @@ struct LogDetailSheetView: View {
                     .font(.title2)
                     .foregroundColor(color)
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title.uppercased())
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                Text("\(vm.job.jobId) · \(vm.job.name)")
-                    .font(.title2.bold())
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if let p = path {
-                    Text(p)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
-                }
-            }
+            titleBlock(font: .title2.bold())
             Spacer()
-            Picker("", selection: $stream) {
-                Text("stderr").tag(LogStream.stderr)
-                Text("stdout").tag(LogStream.stdout)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .help("stderr/stdout umschalten (w)")
-            Toggle(isOn: $vm.followMode) {
-                Label("Follow", systemImage: vm.followMode ? "play.fill" : "play")
-                    .font(.caption.bold())
-            }
-            .toggleStyle(.button)
-            .controlSize(.small)
-            .help("Log-Follow-Mode (5s auto-refresh)")
+            streamPicker
+                .fixedSize()
+            followToggle
 
             SlurmyGlassButtonGroup {
-                Button {
-                    if !content.isEmpty { Clipboard.copy(content) }
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.title3)
-                        .frame(width: 32, height: 32)
-                }
-                .slurmyGlassCircleButton()
-                .help("Log kopieren")
-
-                Button(action: dismiss) {
-                    Image(systemName: "xmark")
-                        .font(.title3)
-                        .frame(width: 32, height: 32)
-                }
-                .slurmyGlassCircleButton()
-                .keyboardShortcut(.cancelAction)
-                .help("Schliessen (Esc / Leertaste)")
+                copyButton
+                closeButton
             }
         }
         .padding(.horizontal, 24).padding(.vertical, 18)
+    }
+
+    private var compactHeader: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(color.opacity(0.18)).frame(width: 40, height: 40)
+                    Image(systemName: "doc.plaintext")
+                        .font(.title3)
+                        .foregroundColor(color)
+                }
+                titleBlock(font: .headline)
+                Spacer(minLength: 8)
+                closeButton
+            }
+            HStack(spacing: 12) {
+                streamPicker
+                Spacer(minLength: 0)
+                followToggle
+                copyButton
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
+    }
+
+    private func titleBlock(font: Font) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased())
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Text("\(vm.job.jobId) · \(vm.job.name)")
+                .font(font)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if let p = path {
+                Text(p)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private var streamPicker: some View {
+        Picker("", selection: $stream) {
+            Text("stderr").tag(LogStream.stderr)
+            Text("stdout").tag(LogStream.stdout)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .help("stderr/stdout umschalten (w)")
+    }
+
+    private var followToggle: some View {
+        Toggle(isOn: $vm.followMode) {
+            Label("Follow", systemImage: vm.followMode ? "play.fill" : "play")
+                .font(.caption.bold())
+        }
+        .toggleStyle(.button)
+        .controlSize(.small)
+        .help("Log-Follow-Mode (5s auto-refresh)")
+    }
+
+    private var copyButton: some View {
+        Button {
+            if !content.isEmpty { Clipboard.copy(content) }
+        } label: {
+            Image(systemName: "doc.on.doc")
+                .font(.title3)
+                .frame(width: 32, height: 32)
+        }
+        .slurmyGlassCircleButton()
+        .help("Log kopieren")
+    }
+
+    private var closeButton: some View {
+        Button(action: dismiss) {
+            Image(systemName: "xmark")
+                .font(.title3)
+                .frame(width: 32, height: 32)
+        }
+        .slurmyGlassCircleButton()
+        .keyboardShortcut(.cancelAction)
+        .help("Schliessen (Esc / Leertaste)")
     }
 
     private var logBody: some View {
@@ -1070,7 +1220,7 @@ struct LogDetailSheetView: View {
             }
             .onChange(of: content) { _, _ in
                 if vm.followMode {
-                    withAnimation(.linear(duration: 0.15)) {
+                    withMotion(.linear(duration: 0.15)) {
                         proxy.scrollTo("logBottom", anchor: .bottom)
                     }
                 }

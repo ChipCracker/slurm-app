@@ -5,10 +5,13 @@ import SwiftUI
 // Strategie: Das gesamte "Frosted Glass" der App läuft über die Helfer in
 // dieser Datei. Auf macOS 26+ und iOS (Deployment-Target 26 ⇒ dort immer
 // verfügbar) rendern sie natives Liquid Glass (`glassEffect`,
-// `.buttonStyle(.glass)`); auf macOS 14/15 replizieren sie den bisherigen
-// Custom-Frost: `Theme.glassGradient` + `.ultraThinMaterial` + 0.5pt
-// Hairline-Rahmen. Die Tönung kommt aus `Theme.glassTint`, damit
-// Farb-Themes und eigene Akzentfarben das Glas weiter einfärben.
+// `.buttonStyle(.glass)`) — sofern der Settings-Schalter "Liquid Glass"
+// (`LiquidGlassSetting`/`\.liquidGlassEnabled`) es erlaubt; auf macOS 14/15
+// und bei deaktiviertem Schalter replizieren sie den bisherigen Custom-Frost:
+// `Theme.glassGradient` + `.ultraThinMaterial` + 0.5pt Hairline-Rahmen
+// (gleiche Geometrie, Theme-getönte Flächen ⇒ farb- und layoutkompatibel).
+// Die Tönung kommt aus `Theme.glassTint`, damit Farb-Themes und eigene
+// Akzentfarben das Glas weiter einfärben.
 //
 // HIG-Disziplin: Diese Helfer gehören ausschließlich auf die SCHWEBENDE
 // Ebene (Modals, Overlays, Header-Buttons, schwebende Controls). Karten in
@@ -19,6 +22,50 @@ import SwiftUI
 // (macOS-26-Overlay-Modal) auf ihren Legacy-Look zurück, statt eigenes
 // Liquid Glass auf die Glasfläche zu stapeln. Auf iOS liegen die Modals in
 // System-Sheets (kein GlassPanel) — dort bleiben die Buttons nativ aus Glas.
+
+// MARK: – Schalter: Liquid Glass an/aus (Settings → Darstellung)
+
+/// Zentrale, billige Abfrage des "liquidGlassEnabled"-Schalters: ein gecachtes
+/// Bool, invalidiert über `UserDefaults.didChangeNotification` — gleicher
+/// Mechanismus wie der Paletten-Cache in Theme.swift, kein UserDefaults-Read
+/// pro View-Body. Der App-Root liest den Key zusätzlich via @AppStorage und
+/// injiziert ihn ins Environment (`\.liquidGlassEnabled`), damit der Baum beim
+/// Umschalten neu rendert. Gilt nur für die app-eigenen Glas-Pfade —
+/// System-Chrome (Toolbar/Sidebar/Sheet-Rahmen) bleibt vom Schalter unberührt.
+enum LiquidGlassSetting {
+    static let storageKey = "liquidGlassEnabled"
+
+    private static var cached: Bool?
+    private static let cacheInvalidator: NSObjectProtocol =
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: UserDefaults.standard,
+            queue: .main
+        ) { _ in LiquidGlassSetting.cached = nil }
+
+    /// true (Default) ⇒ native Glas-Effekte erlaubt (sofern das OS sie kann).
+    static var isEnabled: Bool {
+        _ = cacheInvalidator // Observer beim ersten Zugriff registrieren.
+        if let cached { return cached }
+        let v = UserDefaults.standard.object(forKey: storageKey) as? Bool ?? true
+        cached = v
+        return v
+    }
+}
+
+private struct LiquidGlassEnabledKey: EnvironmentKey {
+    /// Fallback ohne Root-Injection (Previews etc.): der gecachte Settings-Wert.
+    static var defaultValue: Bool { LiquidGlassSetting.isEnabled }
+}
+
+extension EnvironmentValues {
+    /// Vom App-Root (SlurmApp.swift) aus @AppStorage injiziert; die Glas-Helfer
+    /// lesen ihn, damit ein Umschalten in den Settings sofort neu rendert.
+    var liquidGlassEnabled: Bool {
+        get { self[LiquidGlassEnabledKey.self] }
+        set { self[LiquidGlassEnabledKey.self] = newValue }
+    }
+}
 
 // MARK: – Environment: sitzt die View in einem GlassPanel?
 
@@ -45,40 +92,12 @@ private func slurmyGlassStyle(tint: Color?, interactive: Bool) -> Glass {
 }
 
 extension View {
-    /// Natives Liquid-Glass-Panel auf macOS 26+/iOS 26, Legacy-Frost
-    /// (Theme.glassGradient + ultraThinMaterial + Hairline-Border) auf macOS 14–15.
-    @ViewBuilder
+    /// Natives Liquid-Glass-Panel auf macOS 26+/iOS 26 (sofern der
+    /// Settings-Schalter es erlaubt), sonst Legacy-Frost (Theme.glassGradient
+    /// + ultraThinMaterial + Hairline-Border) — gleiche Geometrie, nur
+    /// Theme-getönte Flächen statt echtem Glas.
     func slurmyGlass(cornerRadius: CGFloat = 24, tint: Color? = nil, interactive: Bool = false) -> some View {
-        if #available(macOS 26.0, iOS 26.0, *) {
-            // Inhalt zuerst auf die Glasform clippen (ScrollViews etc. würden
-            // sonst über die runden Ecken hinausragen), dann das echte Glas
-            // in derselben Form dahinter rendern. Immer die Form übergeben —
-            // der Default wäre eine Capsule.
-            self
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .glassEffect(
-                    slurmyGlassStyle(tint: tint, interactive: interactive),
-                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                )
-        } else {
-            // Heutiger Custom-Frost, 1:1 aus dem alten GlassPanel übernommen.
-            self
-                .background(
-                    ZStack {
-                        LinearGradient(
-                            colors: Theme.glassGradient,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        Rectangle().fill(.ultraThinMaterial)
-                    }
-                )
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Theme.hairline, lineWidth: 0.5)
-                )
-        }
+        modifier(SlurmyGlassModifier(cornerRadius: cornerRadius, tint: tint, interactive: interactive))
     }
 
     /// Button-Style-Helfer: .glass/.glassProminent wenn verfügbar, sonst
@@ -97,15 +116,60 @@ extension View {
     }
 }
 
-/// ViewModifier statt View-Extension, damit `insideGlassPanel` aus dem
+/// ViewModifier statt View-Extension, damit `liquidGlassEnabled` aus dem
 /// Environment gelesen werden kann (in einer Extension-Funktion geht das nicht).
-private struct SlurmyGlassButtonModifier: ViewModifier {
-    let prominent: Bool
-    @Environment(\.insideGlassPanel) private var insideGlassPanel
+private struct SlurmyGlassModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let tint: Color?
+    let interactive: Bool
+    @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, iOS 26.0, *) {
+        if #available(macOS 26.0, iOS 26.0, *), liquidGlassEnabled {
+            // Inhalt zuerst auf die Glasform clippen (ScrollViews etc. würden
+            // sonst über die runden Ecken hinausragen), dann das echte Glas
+            // in derselben Form dahinter rendern. Immer die Form übergeben —
+            // der Default wäre eine Capsule.
+            content
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .glassEffect(
+                    slurmyGlassStyle(tint: tint, interactive: interactive),
+                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                )
+        } else {
+            // Custom-Frost, 1:1 aus dem alten GlassPanel übernommen — dient
+            // sowohl macOS 14/15 als auch dem deaktivierten Glas-Schalter.
+            content
+                .background(
+                    ZStack {
+                        LinearGradient(
+                            colors: Theme.glassGradient,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        Rectangle().fill(.ultraThinMaterial)
+                    }
+                )
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 0.5)
+                )
+        }
+    }
+}
+
+/// ViewModifier statt View-Extension, damit `insideGlassPanel` /
+/// `liquidGlassEnabled` aus dem Environment gelesen werden können.
+private struct SlurmyGlassButtonModifier: ViewModifier {
+    let prominent: Bool
+    @Environment(\.insideGlassPanel) private var insideGlassPanel
+    @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, iOS 26.0, *), liquidGlassEnabled {
             if insideGlassPanel {
                 bordered(content)
             } else if prominent {
@@ -130,10 +194,11 @@ private struct SlurmyGlassButtonModifier: ViewModifier {
 
 private struct SlurmyGlassCircleButtonModifier: ViewModifier {
     @Environment(\.insideGlassPanel) private var insideGlassPanel
+    @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, iOS 26.0, *) {
+        if #available(macOS 26.0, iOS 26.0, *), liquidGlassEnabled {
             if insideGlassPanel {
                 materialCircle(content)
             } else {
@@ -159,6 +224,7 @@ private struct SlurmyGlassCircleButtonModifier: ViewModifier {
 struct SlurmyGlassButtonGroup<Content: View>: View {
     let spacing: CGFloat
     @ViewBuilder let content: () -> Content
+    @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
 
     init(spacing: CGFloat = 12, @ViewBuilder content: @escaping () -> Content) {
         self.spacing = spacing
@@ -166,7 +232,7 @@ struct SlurmyGlassButtonGroup<Content: View>: View {
     }
 
     var body: some View {
-        if #available(macOS 26.0, iOS 26.0, *) {
+        if #available(macOS 26.0, iOS 26.0, *), liquidGlassEnabled {
             GlassEffectContainer(spacing: spacing) {
                 HStack(spacing: spacing) { content() }
             }

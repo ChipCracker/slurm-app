@@ -17,6 +17,7 @@ struct SlurmyLoadingView: View {
     var idle: Color = Theme.textSecondary
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
 
     var body: some View {
         Group {
@@ -32,9 +33,11 @@ struct SlurmyLoadingView: View {
     }
 
     /// Ein Frame der Raupe. `t == nil` → statische Pose (Reduce Motion).
+    /// Glas-Variante nur, wenn das OS sie kann UND der Settings-Schalter
+    /// "Liquid Glass" an ist — sonst der klassische flache Squircle-Wave.
     @ViewBuilder
     private func caterpillar(at t: Double?) -> some View {
-        if #available(macOS 26.0, *) {
+        if #available(macOS 26.0, *), liquidGlassEnabled {
             glassCaterpillar(at: t)
         } else {
             legacyWave(at: t)

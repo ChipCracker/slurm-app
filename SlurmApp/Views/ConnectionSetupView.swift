@@ -4,6 +4,12 @@ import UniformTypeIdentifiers
 struct ConnectionSetupView: View {
     @EnvironmentObject var appState: AppState
     @State private var creds: Credentials = .kiz0Default
+    /// Formular-Entwurf, der den Unmount während `.connecting` überlebt:
+    /// RootView tauscht diese View gegen den Lade-Screen aus, was alle
+    /// @State-Felder zerstört. Schlägt der Connect fehl, stellt onAppear den
+    /// Entwurf (inkl. getipptem Passwort / eingefügtem PEM-Key) wieder her,
+    /// statt auf die Defaults zurückzufallen. Nur im Speicher, nie persistiert.
+    @MainActor private static var draftCreds: Credentials?
     @State private var showKeyImporter = false
     @State private var testResult: String?
     @State private var testing: Bool = false
@@ -38,7 +44,14 @@ struct ConnectionSetupView: View {
             // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
         }
         .onAppear {
-            if let stored = appState.credentials { creds = stored }
+            if case .failed = appState.connectionStatus, let draft = Self.draftCreds {
+                // Fehlgeschlagener Verbindungsversuch: die zuletzt getippten
+                // Werte wiederherstellen (gespeicherte Credentials gibt es beim
+                // Erstlauf noch nicht — die werden erst nach Erfolg gesichert).
+                creds = draft
+            } else if let stored = appState.credentials {
+                creds = stored
+            }
             availableKeys = SSHKeyLoader.discoverDefaultKeys()
         }
     }
@@ -359,6 +372,7 @@ struct ConnectionSetupView: View {
             .disabled(testing || !canSubmit)
 
             Button {
+                Self.draftCreds = creds
                 Task { await appState.connect(using: creds) }
             } label: {
                 Label("Verbinden", systemImage: "bolt.fill")

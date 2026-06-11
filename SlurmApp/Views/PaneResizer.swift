@@ -33,7 +33,7 @@ struct PaneResizer: View {
                 .fill(strong ? Theme.accent : Theme.textSecondary.opacity(0.45))
                 .frame(width: isVerticalBar ? 4 : 40,
                        height: isVerticalBar ? 40 : 4)
-                .animation(.easeOut(duration: 0.12), value: strong)
+                .motion(.easeOut(duration: 0.12), value: strong)
         }
         // A roomy invisible hit area around the thin line.
         .frame(width: isVerticalBar ? 11 : nil,

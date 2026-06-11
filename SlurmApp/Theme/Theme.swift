@@ -63,8 +63,18 @@ enum AppTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    var accent: Color {
-        switch self {
+    /// Cached lookup: `Color(light:dark:)` allocates a fresh dynamic platform
+    /// color (NSColor/UIColor provider + closures) on every call, so each
+    /// theme's accent is built exactly ONCE. This also keeps the accent
+    /// value-stable across body passes, so SwiftUI's diffing doesn't see a
+    /// "new" color on every render.
+    var accent: Color { Self.accentCache[self] ?? Self.makeAccent(self) }
+
+    private static let accentCache: [AppTheme: Color] =
+        Dictionary(uniqueKeysWithValues: AppTheme.allCases.map { ($0, AppTheme.makeAccent($0)) })
+
+    private static func makeAccent(_ theme: AppTheme) -> Color {
+        switch theme {
         case .blue:
             return Color(light: Color(red: 0.13, green: 0.40, blue: 0.86),
                          dark:  Color(red: 0.49, green: 0.65, blue: 1.00))
@@ -117,15 +127,32 @@ extension Color {
 }
 
 enum Theme {
+    /// Cache der aufgelösten Palette. Eine Auflösung pro Zugriff wäre teuer
+    /// (UserDefaults-Reads + Struct-Kopie + für das Standard-Thema eine frische
+    /// dynamische Accent-Color — bei ~470 `Theme.*`-Reads pro Jobs-Render
+    /// messbarer Main-Thread-Overhead und nie wert-gleiche Colors fürs
+    /// SwiftUI-Diffing). Invalidiert über `UserDefaults.didChangeNotification`
+    /// (deckt colorTheme, accentTheme UND die Override-Revision ab); der
+    /// App-Root liest die @AppStorage-Keys weiterhin, damit der View-Baum bei
+    /// einem Wechsel neu rendert (siehe SlurmApp.swift). Main-thread-only wie
+    /// alle `Theme`-Zugriffe.
+    private static var cachedPalette: ThemePalette?
+    private static let cacheInvalidator: NSObjectProtocol =
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: UserDefaults.standard,
+            queue: .main
+        ) { _ in Theme.cachedPalette = nil }
+
     /// The resolved palette: the active colour theme + the accent override (for
-    /// the standard theme). Computed — the App root reads both @AppStorage keys,
-    /// so the tree re-renders on a switch and every static below re-resolves
-    /// (same mechanism the old `Theme.accent` relied on). One cached UserDefaults
-    /// read + a struct copy per access, negligible at the ~470 reads/render.
+    /// the standard theme). Resolved once and cached (see `cachedPalette`).
     static var palette: ThemePalette {
+        _ = cacheInvalidator // Observer beim ersten Zugriff registrieren.
+        if let p = cachedPalette { return p }
         let theme = AppColorTheme.current
         var p = theme.palette
         if theme.allowsAccentOverride { p.accent = AppTheme.current.accent }
+        cachedPalette = p
         return p
     }
 
@@ -151,8 +178,9 @@ enum Theme {
     /// Gradient behind the LEGACY `GlassPanel` fallback (macOS 14/15) —
     /// themeable; mirrors the pre-Liquid-Glass look.
     static var glassGradient: [Color] {
-        palette.glassGradient
-            ?? [accent.opacity(0.20), purple.opacity(0.12), background.opacity(0.4)]
+        let p = palette
+        return p.glassGradient
+            ?? [accent.opacity(0.20), p.purple.opacity(0.12), p.background.opacity(0.4)]
     }
 
     /// Einzel-Tönung für natives Liquid Glass (macOS 26+/iOS 26): echtes Glas
@@ -171,17 +199,18 @@ enum Theme {
            let c = ThemeOverrideStore.shared.color(for: slot) {
             return c
         }
+        let p = palette // resolve once, read fields from the local
         switch state.uppercased() {
-        case "R", "RUNNING":         return success
-        case "PD", "PENDING":        return warning
-        case "CG", "COMPLETING":     return cyan
-        case "CD", "COMPLETED":      return textSecondary
+        case "R", "RUNNING":         return p.success
+        case "PD", "PENDING":        return p.warning
+        case "CG", "COMPLETING":     return p.cyan
+        case "CD", "COMPLETED":      return p.textSecondary
         case "F", "FAILED",
              "CA", "CANCELLED",
              "TO", "TIMEOUT",
-             "NF", "NODE_FAIL":      return danger
-        case "S", "SUSPENDED":       return purple
-        default:                     return textSecondary
+             "NF", "NODE_FAIL":      return p.danger
+        case "S", "SUSPENDED":       return p.purple
+        default:                     return p.textSecondary
         }
     }
 

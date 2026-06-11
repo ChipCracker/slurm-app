@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 @main
 struct SlurmApp: App {
@@ -21,6 +24,11 @@ struct SlurmApp: App {
     /// Bumped whenever a custom colour override changes — reading it here forces
     /// the tree to re-render so the computed `Theme.*` statics pick up overrides.
     @AppStorage(ThemeOverrideStore.revisionKey) private var themeOverrideRevision: Int = 0
+    /// Liquid Glass an/aus (Settings → Darstellung). Hier gelesen und ins
+    /// Environment injiziert — gleicher Mechanismus wie appearance/accentTheme,
+    /// damit der Baum beim Umschalten neu rendert und die Glas-Helfer
+    /// (Theme/LiquidGlass.swift) sofort den neuen Wert sehen.
+    @AppStorage(LiquidGlassSetting.storageKey) private var liquidGlassEnabled: Bool = true
     private var colorTheme: AppColorTheme { AppColorTheme(rawValue: colorThemeRaw) ?? .default }
     /// A custom accent override wins; else the standard theme uses the chosen
     /// accent and opinionated themes their own.
@@ -46,6 +54,16 @@ struct SlurmApp: App {
         #if DEBUG && os(macOS)
         loadInjectionBundleIfAvailable()
         #endif
+        #if os(iOS)
+        // iPad: Das Grid-Dashboard (Liste + Detail + Cluster nebeneinander)
+        // ist dort der sinnvolle Default statt der gestreckten Telefon-Liste.
+        // Als registrierter Default statt `set`: Ein bewusstes Abschalten in
+        // den Einstellungen (expliziter Wert) gewinnt dauerhaft; @AppStorage
+        // liest registrierte Defaults vor seinem Initialwert.
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            UserDefaults.standard.register(defaults: ["jobsDashboardEnabled": true])
+        }
+        #endif
     }
 
     private var currentIndex: Int { min(max(textSizeIndex, 0), sizes.count - 1) }
@@ -57,6 +75,7 @@ struct SlurmApp: App {
                 .environmentObject(appState)
                 .preferredColorScheme(effectiveColorScheme)
                 .tint(accentColor)
+                .environment(\.liquidGlassEnabled, liquidGlassEnabled)
                 // Nur überschreiben, wenn der Nutzer per ⌘+/⌘- abgewichen ist —
                 // sonst die System-Textgröße (iOS Dynamic Type) durchlassen.
                 .modifier(TextScale(size: currentIndex == defaultIndex ? nil : sizes[currentIndex]))
@@ -71,7 +90,12 @@ struct SlurmApp: App {
             #if os(macOS)
             CommandGroup(replacing: .newItem) {}
             #endif
-            CommandMenu("Darstellung") {
+            // In das System-"Darstellung"/"View"-Menü einhängen statt eines
+            // eigenen Top-Level-Menüs — sonst stehen zwei Darstellungs-Menüs
+            // (das automatische der NavigationSplitView und ein eigenes)
+            // nebeneinander in der Menüleiste.
+            CommandGroup(after: .toolbar) {
+                Divider()
                 Button("Schrift vergrößern") { setSize(currentIndex + 1) }
                     .keyboardShortcut("+", modifiers: .command)
                     .disabled(currentIndex >= sizes.count - 1)

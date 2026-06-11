@@ -1,9 +1,17 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 extension Notification.Name {
     static let switchSection = Notification.Name("SlurmIOS.switchSection")
     /// Posted with a job id (object: String) to jump to that job in the list.
     static let openJob = Notification.Name("SlurmIOS.openJob")
+    /// Fordert einen sofortigen (stillen) Refresh der Jobliste an — gepostet
+    /// nach mutierenden Aktionen (z. B. scancel im Job-Detail), damit die
+    /// Liste nicht bis zu 10s auf den nächsten Poll wartet. Listener:
+    /// `MainTabView` (besitzt das geteilte `JobsViewModel`).
+    static let requestJobsRefresh = Notification.Name("SlurmIOS.requestJobsRefresh")
 }
 
 enum MainSection: String, CaseIterable, Identifiable, Hashable {
@@ -13,8 +21,8 @@ enum MainSection: String, CaseIterable, Identifiable, Hashable {
     var label: String {
         switch self {
         case .jobs:       "Jobs"
-        case .bookmarks:  "Marken"
-        case .settings:   "Settings"
+        case .bookmarks:  "Lesezeichen"
+        case .settings:   "Einstellungen"
         }
     }
     var symbol: String {
@@ -32,6 +40,9 @@ struct MainTabView: View {
     /// Lebt auf Tab-Ebene, damit Jobs-Daten + Lade-Status den Wechsel zwischen
     /// Jobs/Marken/Settings überstehen (Cache statt Neuladen).
     @StateObject private var jobsVM = JobsViewModel()
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     var body: some View {
         platformRoot
@@ -39,6 +50,12 @@ struct MainTabView: View {
             .environmentObject(dashboard)
             .environmentObject(jobsVM)
             .tint(Theme.accent)
+            // Mutierende Aktionen (z. B. scancel im Job-Detail) stoßen hier
+            // einen Sofort-Refresh an — der Listener lebt auf Tab-Ebene, weil
+            // das geteilte JobsViewModel hier erzeugt wird.
+            .onReceive(NotificationCenter.default.publisher(for: .requestJobsRefresh)) { _ in
+                Task { await jobsVM.refresh(silent: true) }
+            }
     }
 
     @ViewBuilder
@@ -46,15 +63,26 @@ struct MainTabView: View {
         #if os(macOS)
         MacRootView()
         #else
-        PhoneRootView()
+        // iPad mit regulärer Breite bekommt den Split-View (Sektionen in der
+        // Sidebar) statt des gestreckten iPhone-TabView-Layouts; iPhone und
+        // kompakte iPad-Fenster (Split View/Slide Over) bleiben beim TabView.
+        // Idiom-Check zusätzlich zur Size-Class: Plus/Max-iPhones melden im
+        // Querformat ebenfalls .regular — ohne den Guard würde dort bei jeder
+        // Rotation zwischen TabView und Split-View gewechselt (Navigations-
+        // und Auswahl-Zustand ginge mitten in der Nutzung verloren).
+        if UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular {
+            PadRootView()
+        } else {
+            PhoneRootView()
+        }
         #endif
     }
 }
 
 #if os(iOS)
-/// iPhone/iPad: klassische TabView. Jede Sektion (`JobsView`/`BookmarksView`/
-/// `SettingsView`) bringt ihren eigenen `NavigationStack` + Titel mit, daher
-/// hier bewusst KEIN zusätzlicher Stack.
+/// iPhone (kompakte Breite): klassische TabView. Jede Sektion (`JobsView`/
+/// `BookmarksView`/`SettingsView`) bringt ihren eigenen `NavigationStack` +
+/// Titel mit, daher hier bewusst KEIN zusätzlicher Stack.
 private struct PhoneRootView: View {
     @EnvironmentObject var appState: AppState
     @State private var selection: MainSection = .jobs
@@ -73,6 +101,48 @@ private struct PhoneRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .switchSection)) { note in
             if let sec = note.object as? MainSection { selection = sec }
+        }
+    }
+}
+
+/// iPad (reguläre Breite): Sektionen als Sidebar eines `NavigationSplitView`,
+/// Inhalt in der Detail-Spalte — analog zum macOS-`MacRootView` statt des
+/// gestreckten Telefon-Layouts. Jede Sektion bringt weiterhin ihren eigenen
+/// `NavigationStack` mit (Jobs pusht das Job-Detail darin), daher auch hier
+/// kein zusätzlicher Stack um die Detail-Spalte.
+private struct PadRootView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var selection: MainSection? = .jobs
+
+    var body: some View {
+        NavigationSplitView {
+            List(selection: $selection) {
+                Section("Cluster") {
+                    ForEach(MainSection.allCases) { section in
+                        Label(section.label, systemImage: section.symbol)
+                            .tag(section)
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("Slurmy")
+            .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 300)
+        } detail: {
+            detailView
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onReceive(NotificationCenter.default.publisher(for: .switchSection)) { note in
+            if let sec = note.object as? MainSection { selection = sec }
+        }
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch selection {
+        case .jobs:       JobsView()
+        case .bookmarks:  BookmarksView()
+        case .settings:   SettingsView()
+        case .none:       EmptyView()
         }
     }
 }

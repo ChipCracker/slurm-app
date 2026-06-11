@@ -89,7 +89,7 @@ private struct WidgetTile<Content: View>: View {
             .offset(x: originX(f.x) + dragOffset.width,
                     y: originY(f.y) + dragOffset.height)
             .zIndex(dragging ? 10 : 0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: f)
+            .motion(.spring(response: 0.3, dampingFraction: 0.85), value: f)
     }
 
     private var tileBody: some View {
@@ -168,7 +168,7 @@ private struct WidgetTile<Content: View>: View {
                 candidate.y = Int(max(0, (originY(f.y) + v.translation.height) / stepY + 0.5))
                 let accepted = commit(candidate)
                 _ = accepted // bei Ablehnung sorgt Reset für Snap-Back
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                withMotion(.spring(response: 0.3, dampingFraction: 0.85)) {
                     dragOffset = .zero
                     dragging = false
                 }
@@ -187,7 +187,7 @@ private struct WidgetTile<Content: View>: View {
                 candidate.w = Int((pxW(f.w) + v.translation.width + spacing) / stepX + 0.5)
                 candidate.h = Int((pxH(f.h) + v.translation.height + spacing) / stepY + 0.5)
                 _ = commit(candidate)
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                withMotion(.spring(response: 0.3, dampingFraction: 0.85)) {
                     resizeDelta = .zero
                     dragging = false
                 }

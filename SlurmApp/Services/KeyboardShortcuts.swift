@@ -8,7 +8,7 @@ import SwiftUI
 /// macOS-conventions (`⌘F`, `⌘1/2/3`, `⌘⌥0`) live alongside.
 enum Shortcut: String, CaseIterable, Identifiable {
     // App-wide
-    case quitApp
+    case quitApp           // ⌘Q — Standard-Quit über das System-Menü (bewusst KEIN bare `q`)
     case help
     case helpAlt           // `?`
     case focusSearch
@@ -145,6 +145,10 @@ enum Shortcut: String, CaseIterable, Identifiable {
     var modifiers: EventModifiers {
         switch self {
         case .toggleInspector:                              return [.command, .option]
+        // ⌘Q statt bare `q`: Ein einzelner versehentlicher Tastendruck darf
+        // nie die ganze App (samt SSH-Session) beenden — Quit läuft über die
+        // Standard-Konvention des System-Menüs.
+        case .quitApp:                                      return [.command]
         case .focusSearch:                                  return [.command]
         case .focusSidebar:                                 return [.command]
         case .toggleAllUsersCmd:                            return [.command, .shift]
@@ -212,17 +216,17 @@ enum Shortcut: String, CaseIterable, Identifiable {
         case .toggleInspector:      return "Inspector ein-/ausklappen"
         case .sectionJobs:          return "Sektion: Jobs"
         case .sectionBookmarks,
-             .openBookmarks:        return "Sektion: Marken"
-        case .sectionSettings:      return "Sektion: Settings"
+             .openBookmarks:        return "Sektion: Lesezeichen"
+        case .sectionSettings:      return "Sektion: Einstellungen"
         case .refresh:              return "Aktualisieren"
         case .toggleAllUsers,
              .toggleAllUsersCmd:    return "Alle / meine Jobs"
-        case .toggleRunningOnly:    return "Nur running"
+        case .toggleRunningOnly:    return "Nur laufende"
         case .submitJob:            return "Neuer Batch-Job"
         case .interactiveSession:   return "Interaktive Session"
         case .attachSelected:       return "Attach zum Job"
-        case .cancelSelected:       return "Job abbrechen"
-        case .bookmarkSelected:     return "Job bookmarken"
+        case .cancelSelected:       return "Job beenden (scancel)"
+        case .bookmarkSelected:     return "Lesezeichen setzen"
         case .clearSelection:       return "Auswahl / Modal schliessen"
         case .cyclePartition:       return "Nächste Partition (Sheet)"
         case .nodesOverview:        return "Knoten-Übersicht (alle Partitionen)"

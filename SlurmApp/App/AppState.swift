@@ -1,11 +1,16 @@
 import Foundation
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 @MainActor
 final class AppState: ObservableObject {
     @Published var credentials: Credentials?
     @Published var connectionStatus: ConnectionStatus = .disconnected
-    @Published var slurm: SlurmService? { didSet { cachedQos = nil; cachedPartitions = nil } }
+    @Published var slurm: SlurmService? {
+        didSet { cachedQos = nil; cachedPartitions = nil; gpuHoursCache = [:] }
+    }
 
     // Connection-wide caches for the cluster-static QoS / partition lists, so
     // JobsView batch actions and every JobDetailView don't each refetch them.
@@ -29,18 +34,44 @@ final class AppState: ObservableObject {
 
     // GPU-hours cache keyed by period — the standalone GPU-hours sheet re-ran the
     // heavy year-long sreport on every open; this serves a recent result instead.
+    // Zusätzlich pro Verbindung (user@host) ge-scoped UND im `slurm`-didSet
+    // geleert: Nach einem Cluster-/Account-Wechsel darf nie die Rangliste des
+    // alten Clusters als frische Daten erscheinen.
     private var gpuHoursCache: [String: (entries: [GpuHoursEntry], at: Date)] = [:]
 
+    /// Scope-Präfix der aktiven Verbindung für verbindungsgebundene Caches.
+    /// Auch von JobsViewModel genutzt, um die in UserDefaults persistierten
+    /// GPU-Stunden-/Quota-Caches an die Verbindung zu binden.
+    var connectionCacheScope: String {
+        guard let c = credentials else { return "-" }
+        return "\(c.username)@\(c.host):\(c.port)"
+    }
+
     func cachedGpuHours(forKey key: String, maxAge: TimeInterval) -> [GpuHoursEntry]? {
-        guard let c = gpuHoursCache[key], Date().timeIntervalSince(c.at) < maxAge else { return nil }
+        let scoped = connectionCacheScope + "|" + key
+        guard let c = gpuHoursCache[scoped], Date().timeIntervalSince(c.at) < maxAge else { return nil }
         return c.entries
     }
 
     func storeGpuHours(_ entries: [GpuHoursEntry], forKey key: String) {
-        gpuHoursCache[key] = (entries, Date())
+        gpuHoursCache[connectionCacheScope + "|" + key] = (entries, Date())
     }
 
+    /// Roh-Zugriff inkl. Zeitstempel — für Konsumenten mit eigenem Frische-
+    /// Fenster. Die Inspector-Card (JobsViewModel.reloadGpuHours) teilt sich
+    /// so denselben Jahres-`sreport` mit dem GPU-Hours-Sheet, statt das
+    /// schwerste Read-Kommando der App doppelt über die serielle SSH-Queue
+    /// zu schicken.
+    func cachedGpuHoursEntry(forKey key: String) -> (entries: [GpuHoursEntry], at: Date)? {
+        gpuHoursCache[connectionCacheScope + "|" + key]
+    }
+
+    // Tokens der Sleep/Wake-Observer. AppState lebt so lange wie die App,
+    // eine Deregistrierung ist daher nie nötig.
+    private var sleepWakeObservers: [NSObjectProtocol] = []
+
     init() {
+        installSleepWakeObservers()
         #if DEBUG
         // UI-Mock zum Layout-Testen ohne SSH: `SLURMIOS_UIMOCK=1` setzt den
         // Status auf „verbunden", die JobsView lädt dann statische Mock-Daten
@@ -60,6 +91,36 @@ final class AppState: ObservableObject {
             self.credentials = stored
             Task { await self.connect(using: stored) }
         }
+    }
+
+    /// Sleep/Wake-Erkennung (macOS): Systemschlaf ändert die `scenePhase`
+    /// NICHT, solange das Slurmy-Fenster vorne bleibt — ohne diese Observer
+    /// liefe der erste Poll nach dem Aufwachen bis zu 45 s in den Timeout des
+    /// toten Sockets und blockierte damit die serielle SSH-Queue für alle
+    /// anderen Kommandos (Refresh, scancel, GPU-Tick). iOS deckt das die
+    /// bestehende scenePhase-Logik der Views ab (Hintergrund ⇒ Reconnect).
+    private func installSleepWakeObservers() {
+        #if os(macOS)
+        let nc = NSWorkspace.shared.notificationCenter
+        sleepWakeObservers.append(nc.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            // Die Session stirbt im Schlaf fast sicher — vormerken, damit das
+            // nächste Kommando direkt auf einem frischen Socket startet.
+            MainActor.assumeIsolated { self?.slurm?.markLinkSuspect() }
+        })
+        sleepWakeObservers.append(nc.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let slurm = self?.slurm else { return }
+                // Flag synchron setzen (erreicht auch schon eingereihte
+                // Polls), dann die Session proaktiv neu aufbauen.
+                slurm.markLinkSuspect()
+                Task { await slurm.reconnect() }
+            }
+        })
+        #endif
     }
 
     func connect(using creds: Credentials) async {

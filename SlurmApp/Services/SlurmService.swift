@@ -18,14 +18,25 @@ actor SlurmService {
         await client.reconnect()
     }
 
+    /// Markiert den SSH-Link als vermutlich tot (Sleep/Wake). Synchron und
+    /// nonisolated, damit der Hinweis sofort gesetzt wird — auch während ein
+    /// Poll-Kommando auf der seriellen SSH-Queue läuft oder wartet.
+    nonisolated func markLinkSuspect() {
+        client.markLinkSuspect()
+    }
+
     func ping() async throws -> String {
         try await client.ping()
     }
 
-    func fetchJobs(allUsers: Bool, currentUser: String) async throws -> [Job] {
+    /// `priority`: manuelle Refreshes (Toolbar, Pull-to-Refresh, nach Aktionen)
+    /// laufen als `.userInitiated` und springen damit in der seriellen
+    /// SSH-Queue vor wartende Poll-Ticks (srun/sstat/tail) — der 10s-Poll
+    /// bleibt beim Default `.poll`.
+    func fetchJobs(allUsers: Bool, currentUser: String, priority: SSHCommandPriority = .poll) async throws -> [Job] {
         let userFilter = allUsers ? "" : " -u \(shellEscape(currentUser))"
         let cmd = "squeue -h -o \"\(SlurmParser.squeueFormat)\"\(userFilter)"
-        let out = try await client.execute(cmd)
+        let out = try await client.execute(cmd, priority: priority)
         return SlurmParser.parseSqueue(out)
     }
 
@@ -34,12 +45,12 @@ actor SlurmService {
         return SlurmParser.parseSinfo(out)
     }
 
-    func fetchPartitionGpus() async throws -> [PartitionGpu] {
+    func fetchPartitionGpus(priority: SSHCommandPriority = .poll) async throws -> [PartitionGpu] {
         // Per-NODE listing (`-N`): %G is a per-node GRES count, so the partition
         // total is the SUM over its nodes. The old `-o "%P|%G" | sort -u` kept
         // one line per partition and mistook the per-node count for the total
         // (e.g. 8/8 shown when 20/32 were used on a 4-node partition).
-        let out = try await client.execute("sinfo -h -N -o \"%P|%G\"")
+        let out = try await client.execute("sinfo -h -N -o \"%P|%G\"", priority: priority)
         return SlurmParser.parsePartitionGres(out)
     }
 
@@ -149,7 +160,10 @@ actor SlurmService {
             "timeout 20 srun --overlap --jobid=\(shellEscape(baseId)) " +
             "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit " +
             "--format=csv,noheader,nounits </dev/null 2>&1"
-        let out = try await client.executeWrite(cmd) // srun isn't on the read-only allow-list
+        // srun isn't on the read-only allow-list, daher executeWrite — aber als
+        // 5-s-Poll explizit mit Poll-Priorität, damit echte Nutzeraktionen
+        // (scancel & Co.) nicht hinter dem GPU-Tick anstehen.
+        let out = try await client.executeWrite(cmd, priority: .poll)
         let stats = SlurmParser.parseNvidiaSmi(out)
         // No parseable GPU rows but the command did print something → that's an
         // srun/nvidia-smi error message. Bubble it up so the UI shows it rather

@@ -9,7 +9,7 @@ struct BookmarksView: View {
                 Theme.background.ignoresSafeArea()
                 if bookmarks.bookmarks.isEmpty {
                     SlurmyEmptyState(
-                        title: "Keine Marken",
+                        title: "Keine Lesezeichen",
                         message: "Markiere Jobs mit dem Lesezeichen – Slurmy hebt sie hier für dich auf.",
                         mascotWidth: 220
                     )
@@ -57,7 +57,7 @@ struct BookmarksView: View {
                     .scrollContentBackground(.hidden)
                 }
             }
-            .navigationTitle("Marken")
+            .navigationTitle("Lesezeichen")
             // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
         }
     }

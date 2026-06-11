@@ -98,6 +98,12 @@ final class ThemeOverrideStore: ObservableObject {
 
     @Published private(set) var palette: ThemeOverridePalette
 
+    /// Vor-aufgelöste Farben pro Slot. `AdaptiveColorValue.color` baut bei
+    /// jedem Aufruf eine frische dynamische Platform-Color (Heap-Allokation,
+    /// nie wert-gleich fürs SwiftUI-Diffing) — deshalb wird pro Änderung
+    /// einmal aufgelöst statt pro `Theme.accent`/`stateColor`-Zugriff.
+    private var resolved: [ThemeSlot: Color] = [:]
+
     private init() {
         if let data = UserDefaults.standard.data(forKey: Self.storageKey),
            let p = try? JSONDecoder().decode(ThemeOverridePalette.self, from: data) {
@@ -105,13 +111,14 @@ final class ThemeOverrideStore: ObservableObject {
         } else {
             palette = ThemeOverridePalette()
         }
+        rebuildResolved()
     }
 
     var hasOverrides: Bool { !palette.colors.isEmpty }
 
     /// Fast synchronous lookup — read from Theme.accent/stateColor in every body,
-    /// so only a dictionary access, no JSON decode in the hot path.
-    func color(for slot: ThemeSlot) -> Color? { palette.colors[slot.rawValue]?.color }
+    /// so only a dictionary access, no Color construction in the hot path.
+    func color(for slot: ThemeSlot) -> Color? { resolved[slot] }
     func value(for slot: ThemeSlot) -> AdaptiveColorValue? { palette.colors[slot.rawValue] }
     func hasOverride(_ slot: ThemeSlot) -> Bool { palette.colors[slot.rawValue] != nil }
 
@@ -129,12 +136,19 @@ final class ThemeOverrideStore: ObservableObject {
     }
 
     private func persist() {
+        rebuildResolved()
         palette.updatedAt = Date()
         if let data = try? JSONEncoder().encode(palette) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)
         }
         let d = UserDefaults.standard
         d.set(d.integer(forKey: Self.revisionKey) + 1, forKey: Self.revisionKey)
+    }
+
+    private func rebuildResolved() {
+        resolved = ThemeSlot.allCases.reduce(into: [:]) { dict, slot in
+            dict[slot] = palette.colors[slot.rawValue]?.color
+        }
     }
 }
 

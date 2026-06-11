@@ -8,7 +8,27 @@ import SwiftUI
 // drag. That's what keeps resizing smooth.
 //
 // @State survives parent re-renders (SwiftUI keys it by position), so the chosen
-// sizes persist across the ~10s polling refreshes.
+// sizes persist across the ~10s polling refreshes. Across section switches
+// (JobsView is destroyed when visiting Bookmarks/Settings) and relaunches the
+// divider values are restored from UserDefaults via `storageKey` — mirroring how
+// `inspectorOpen` is persisted. Double-clicking a divider resets it (and clears
+// the stored value), matching the NSSplitView convention.
+
+/// Reads a persisted divider value; nil when no key is set or nothing stored.
+private func loadDividerValue(_ key: String?) -> CGFloat? {
+    guard let key, let v = UserDefaults.standard.object(forKey: key) as? Double else { return nil }
+    return CGFloat(v)
+}
+
+/// Persists a divider value; nil removes the entry (reset to default).
+private func storeDividerValue(_ value: CGFloat?, key: String?) {
+    guard let key else { return }
+    if let value {
+        UserDefaults.standard.set(Double(value), forKey: key)
+    } else {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
 
 /// Left fills, right is a fixed (resizable) width. `showRight` hides the right
 /// pane + divider without losing the stored width.
@@ -19,6 +39,8 @@ struct ResizableHSplit2<L: View, R: View>: View {
     private let minLeft: CGFloat
     private let minRight: CGFloat
     private let maxRight: CGFloat
+    private let defaultRight: CGFloat
+    private let storageKey: String?
 
     @State private var rightWidth: CGFloat
     @State private var base: CGFloat?
@@ -28,6 +50,7 @@ struct ResizableHSplit2<L: View, R: View>: View {
          minLeft: CGFloat = 460,
          minRight: CGFloat = 300,
          maxRight: CGFloat = 640,
+         storageKey: String? = "layout.split.inspectorWidth",
          @ViewBuilder left: () -> L,
          @ViewBuilder right: () -> R) {
         self.left = left()
@@ -36,7 +59,10 @@ struct ResizableHSplit2<L: View, R: View>: View {
         self.minLeft = minLeft
         self.minRight = minRight
         self.maxRight = maxRight
-        self._rightWidth = State(initialValue: defaultRight)
+        self.defaultRight = defaultRight
+        self.storageKey = storageKey
+        let stored = loadDividerValue(storageKey)
+        self._rightWidth = State(initialValue: min(maxRight, max(minRight, stored ?? defaultRight)))
     }
 
     var body: some View {
@@ -52,8 +78,15 @@ struct ResizableHSplit2<L: View, R: View>: View {
                             var tx = Transaction(); tx.disablesAnimations = true
                             withTransaction(tx) { rightWidth = min(maxRight, max(minRight, b - delta)) }
                         },
-                        onEnd: { base = nil }
+                        onEnd: {
+                            base = nil
+                            storeDividerValue(rightWidth, key: storageKey)
+                        }
                     )
+                    .onTapGesture(count: 2) {
+                        rightWidth = defaultRight
+                        storeDividerValue(nil, key: storageKey)
+                    }
                     right.frame(width: rightWidth)
                 }
                 // Slide the column in/out from the trailing edge while the left
@@ -61,7 +94,7 @@ struct ResizableHSplit2<L: View, R: View>: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .animation(.smooth(duration: 0.28), value: showRight)
+        .motion(.smooth(duration: 0.28), value: showRight)
     }
 }
 
@@ -74,6 +107,7 @@ struct ResizableVSplit2<T: View, B: View>: View {
     private let autoTopHeight: CGFloat
     private let minTop: CGFloat
     private let minBottom: CGFloat
+    private let storageKey: String?
 
     @State private var override: CGFloat?
     @State private var base: CGFloat?
@@ -81,6 +115,7 @@ struct ResizableVSplit2<T: View, B: View>: View {
     init(autoTopHeight: CGFloat,
          minTop: CGFloat = 140,
          minBottom: CGFloat = 170,
+         storageKey: String? = "layout.split.tableHeight",
          @ViewBuilder top: () -> T,
          @ViewBuilder bottom: () -> B) {
         self.top = top()
@@ -88,28 +123,48 @@ struct ResizableVSplit2<T: View, B: View>: View {
         self.autoTopHeight = autoTopHeight
         self.minTop = minTop
         self.minBottom = minBottom
+        self.storageKey = storageKey
+        self._override = State(initialValue: loadDividerValue(storageKey))
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            topRegion
-            PaneResizer(
-                drag: .updown,
-                onChange: { delta in
-                    let b = base ?? (override ?? autoTopHeight)
-                    if base == nil { base = b }
-                    var tx = Transaction(); tx.disablesAnimations = true
-                    withTransaction(tx) { override = max(minTop, b + delta) }
-                },
-                onEnd: { base = nil }
-            )
-            bottom.frame(minHeight: minBottom, maxHeight: .infinity)
+        GeometryReader { geo in
+            // 11pt = Höhe der PaneResizer-Hitbox. Der Override muss nach oben
+            // geklemmt werden, sonst schiebt ein Drag bis an/unter die
+            // Fensterkante den Divider samt Detail-Pane unerreichbar aus dem
+            // sichtbaren Bereich.
+            let resizerH: CGFloat = 11
+            let maxTop = max(minTop, geo.size.height - minBottom - resizerH)
+            VStack(spacing: 0) {
+                topRegion(maxTop: maxTop)
+                PaneResizer(
+                    drag: .updown,
+                    onChange: { delta in
+                        let b = base ?? (override ?? autoTopHeight)
+                        if base == nil { base = b }
+                        var tx = Transaction(); tx.disablesAnimations = true
+                        withTransaction(tx) { override = min(max(minTop, b + delta), maxTop) }
+                    },
+                    onEnd: {
+                        base = nil
+                        storeDividerValue(override, key: storageKey)
+                    }
+                )
+                .onTapGesture(count: 2) {
+                    // Doppelklick: zurück zur automatischen Höhe.
+                    override = nil
+                    storeDividerValue(nil, key: storageKey)
+                }
+                bottom.frame(minHeight: minBottom, maxHeight: .infinity)
+            }
         }
     }
 
-    @ViewBuilder private var topRegion: some View {
+    @ViewBuilder private func topRegion(maxTop: CGFloat) -> some View {
         if let h = override {
-            top.frame(height: max(minTop, h))
+            // Auch gespeicherte/ältere Overrides an die aktuelle Fenstergröße
+            // klemmen (das Fenster kann seit dem Drag geschrumpft sein).
+            top.frame(height: min(max(minTop, h), maxTop))
         } else {
             top.frame(maxHeight: autoTopHeight)
         }
@@ -125,12 +180,15 @@ struct ResizableVSplit3<A: View, B: View, C: View>: View {
     private let b: B
     private let c: C
     private let minH: CGFloat
+    private let keyH1: String?
+    private let keyH2: String?
 
     @State private var h1: CGFloat?
     @State private var h2: CGFloat?
     @State private var base: CGFloat?
 
     init(minH: CGFloat = 120,
+         storageKey: String? = "layout.split.cluster",
          @ViewBuilder a: () -> A,
          @ViewBuilder b: () -> B,
          @ViewBuilder c: () -> C) {
@@ -138,6 +196,10 @@ struct ResizableVSplit3<A: View, B: View, C: View>: View {
         self.b = b()
         self.c = c()
         self.minH = minH
+        self.keyH1 = storageKey.map { $0 + ".h1" }
+        self.keyH2 = storageKey.map { $0 + ".h2" }
+        self._h1 = State(initialValue: loadDividerValue(keyH1))
+        self._h2 = State(initialValue: loadDividerValue(keyH2))
     }
 
     var body: some View {
@@ -157,8 +219,15 @@ struct ResizableVSplit3<A: View, B: View, C: View>: View {
                         var tx = Transaction(); tx.disablesAnimations = true
                         withTransaction(tx) { h1 = min(max(bb + delta, minH), avail - 2 * minH) }
                     },
-                    onEnd: { base = nil }
+                    onEnd: {
+                        base = nil
+                        storeDividerValue(h1, key: keyH1)
+                    }
                 )
+                .onTapGesture(count: 2) {
+                    h1 = nil
+                    storeDividerValue(nil, key: keyH1)
+                }
                 region(b).frame(height: r2)
                 PaneResizer(
                     drag: .updown,
@@ -168,8 +237,15 @@ struct ResizableVSplit3<A: View, B: View, C: View>: View {
                         var tx = Transaction(); tx.disablesAnimations = true
                         withTransaction(tx) { h2 = min(max(bb + delta, minH), avail - r1 - minH) }
                     },
-                    onEnd: { base = nil }
+                    onEnd: {
+                        base = nil
+                        storeDividerValue(h2, key: keyH2)
+                    }
                 )
+                .onTapGesture(count: 2) {
+                    h2 = nil
+                    storeDividerValue(nil, key: keyH2)
+                }
                 region(c).frame(height: r3)
             }
         }

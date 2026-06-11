@@ -1,4 +1,9 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 /// Shared animation tokens + reduce-motion-aware helpers. All app animations go
 /// through these so "Bewegung reduzieren" (Accessibility) is honoured in one
@@ -10,6 +15,34 @@ enum Motion {
     static let smooth  = Animation.smooth(duration: 0.35)
     /// Quick, for taps / toggles.
     static let snappy  = Animation.snappy(duration: 0.22)
+
+    /// Systemweite "Bewegung reduzieren"-Einstellung — für imperative Sites
+    /// (`withMotion`, `Binding.animation`), die keinen bequemen Zugriff auf
+    /// `@Environment(\.accessibilityReduceMotion)` haben.
+    @MainActor
+    static var reduceMotionEnabled: Bool {
+        #if os(iOS)
+        UIAccessibility.isReduceMotionEnabled
+        #elseif os(macOS)
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #else
+        false
+        #endif
+    }
+}
+
+/// Imperatives Gegenstück zu `.motion(_:value:)`: führt `body` animiert aus —
+/// außer "Bewegung reduzieren" ist aktiv, dann wird die Änderung ohne Bewegung
+/// (Transaktion mit deaktivierten Animationen) angewendet.
+@MainActor
+@discardableResult
+func withMotion<Result>(_ animation: Animation? = .default, _ body: () throws -> Result) rethrows -> Result {
+    if Motion.reduceMotionEnabled {
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        return try withTransaction(tx, body)
+    }
+    return try withAnimation(animation, body)
 }
 
 extension View {

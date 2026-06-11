@@ -132,7 +132,9 @@ extension ThemePalette {
         surfaceElevated: Color(lightHex: 0xEEE8D5, darkHex: 0x0A4250),
         border:          Color(lightHex: 0xE4DCC4, darkHex: 0x0F4D5C),
         textPrimary:     Color(lightHex: 0x586E75, darkHex: 0x93A1A1),
-        textSecondary:   Color(lightHex: 0x839496, darkHex: 0x657B83),
+        // base00 (hell) / base0 (dunkel) — Solarized definiert base0 als
+        // Fließtext für DUNKLE und base00 für HELLE Hintergründe.
+        textSecondary:   Color(lightHex: 0x657B83, darkHex: 0x839496),
         accent:          Color(lightHex: 0x268BD2, darkHex: 0x268BD2),
         onAccent:        Color(lightHex: 0xFDF6E3, darkHex: 0x002B36),
         success:         Color(lightHex: 0x859900, darkHex: 0x859900),

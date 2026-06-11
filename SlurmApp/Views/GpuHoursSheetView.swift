@@ -6,6 +6,20 @@ import SwiftUI
 struct GpuHoursSheetView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.glassModalDismiss) private var dismiss
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    /// Kompakte iPhone-Breite → Menü-Picker + eigene Zeilen statt der einen
+    /// HStack-Reihe (6-Segment-Picker + DatePickers + Suche), die ~345pt
+    /// Sheet-Breite weit überläuft.
+    private var isCompact: Bool {
+        #if os(iOS)
+        return horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
 
     @State private var rangePreset: RangePreset = .thisYear
     @State private var customStart: Date = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
@@ -72,7 +86,7 @@ struct GpuHoursSheetView: View {
                     .foregroundColor(Theme.success)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("GPU Hours")
+                Text("GPU-Stunden")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
@@ -106,7 +120,16 @@ struct GpuHoursSheetView: View {
 
     // MARK: – Period controls
 
+    @ViewBuilder
     private var controls: some View {
+        if isCompact {
+            compactControls
+        } else {
+            regularControls
+        }
+    }
+
+    private var regularControls: some View {
         HStack(spacing: 12) {
             Picker("", selection: $rangePreset) {
                 ForEach(RangePreset.allCases) { p in
@@ -132,6 +155,38 @@ struct GpuHoursSheetView: View {
                 .frame(maxWidth: 200)
         }
         .padding(.horizontal, 24).padding(.vertical, 12)
+    }
+
+    /// Kompakte Variante: Zeitraum als Menü-Picker, eigene Zeilen für die
+    /// Custom-Daten und die Suche — nichts läuft aus der Sheet-Breite.
+    private var compactControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Zeitraum")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("Zeitraum", selection: $rangePreset) {
+                    ForEach(RangePreset.allCases) { p in
+                        Text(p.label).tag(p)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+            if rangePreset == .custom {
+                DatePicker("Von", selection: $customStart, displayedComponents: .date)
+                    .font(.callout)
+                DatePicker("Bis", selection: $customEnd, displayedComponents: .date)
+                    .font(.callout)
+                Button("Anwenden") { requestReload() }
+                    .slurmyGlassButton(prominent: true)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            TextField("Suche User", text: $search)
+                .textFieldStyle(.roundedBorder)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
     }
 
     // MARK: – Content
@@ -318,7 +373,7 @@ enum RangePreset: String, CaseIterable, Identifiable {
         case .last12Months: "12 Monate"
         case .thisYear:     "Dieses Jahr"
         case .lastYear:     "Letztes Jahr"
-        case .custom:       "Custom…"
+        case .custom:       "Benutzerdefiniert…"
         }
     }
 }

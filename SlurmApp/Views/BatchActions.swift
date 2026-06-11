@@ -9,7 +9,9 @@ enum BatchAction: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .cancel:    "Abbrechen"
+        // "Beenden", nicht "Abbrechen": Der Bestätigungsdialog hätte sonst
+        // zwei identisch beschriftete Buttons (destruktiv + Dismiss).
+        case .cancel:    "Beenden"
         case .qos:       "QoS ändern"
         case .partition: "Partition ändern"
         case .hold:      "Zurückhalten"
@@ -48,7 +50,7 @@ enum BatchAction: String, CaseIterable, Identifiable {
     /// Verb für den Bestätigungsdialog (Aktionen ohne Wert).
     var confirmVerb: String {
         switch self {
-        case .cancel:  "abbrechen"
+        case .cancel:  "beenden"
         case .hold:    "zurückhalten"
         case .release: "freigeben"
         case .requeue: "neu einreihen"

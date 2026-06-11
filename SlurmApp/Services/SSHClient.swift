@@ -30,6 +30,18 @@ enum SSHError: LocalizedError {
     }
 }
 
+/// Priorität eines Kommandos in der seriellen SSH-Queue. Ein bereits
+/// laufendes Kommando kann nicht unterbrochen werden (libssh2), aber wartende
+/// Poll-Kommandos werden von Nutzeraktionen überholt — ein scancel muss nicht
+/// hinter einem ganzen Poll-Rückstau (srun/sstat/tail) anstehen.
+enum SSHCommandPriority: Sendable {
+    /// Hintergrund-Polls (Jobs ~10 s, GPU ~5 s, Logs, Quota) — FIFO.
+    case poll
+    /// Vom Nutzer ausgelöste Aktion (scancel, Hold, QoS-Änderung, sbatch, …) —
+    /// wird vor alle noch nicht gestarteten Poll-Kommandos einsortiert.
+    case userInitiated
+}
+
 /// macOS-only SSH wrapper backed by Shout (libssh2). Read-only by default;
 /// mutating commands go through `executeWrite`.
 ///
@@ -51,6 +63,37 @@ final class SSHClient: @unchecked Sendable {
     /// SHA-256 host-key fingerprint observed on the live connection. The caller
     /// pins this into the stored credentials on first connect.
     let connectedFingerprint: String?
+
+    // Wartende Kommandos: kleine Prioritätsliste VOR der seriellen Queue.
+    // Nutzeraktionen werden vor noch nicht gestartete Polls einsortiert
+    // (FIFO innerhalb derselben Priorität). Zugriff nur unter `stateLock`.
+    private var pendingCommands: [(priority: SSHCommandPriority, run: () -> Void)] = []
+    // Sleep/Wake-Hinweis: die Session ist vermutlich tot — das nächste Kommando
+    // baut sie zuerst neu auf, statt 45 s in den Timeout des halboffenen
+    // Sockets zu laufen. Wird von außerhalb der Queue gesetzt (markLinkSuspect),
+    // daher unter `stateLock`.
+    private var linkSuspect = false
+    private let stateLock = NSLock()
+
+    // Outage-Backoff (nur auf `queue` berührt): nach einem fehlgeschlagenen
+    // Reconnect schlagen wartende Kommandos sofort mit `.notConnected` fehl,
+    // statt pro Kommando bis zu ~90 s (45 s Read-Timeout + 45 s Connect) auf
+    // der seriellen Queue zu verbrennen. Fenster wächst exponentiell
+    // 5 s → 60 s; der erste Erfolg oder ein expliziter `reconnect()` (Wake,
+    // Nutzer-Retry) setzt es zurück.
+    private var lastReconnectFailure: Date?
+    private var reconnectCooldown: TimeInterval = SSHClient.reconnectCooldownBase
+    private static let reconnectCooldownBase: TimeInterval = 5
+    private static let reconnectCooldownMax: TimeInterval = 60
+
+    /// Threadsicheres Cancel-Flag — von `withTaskCancellationHandler`
+    /// (beliebiger Thread) gesetzt, vom Queue-Block vor dem Start gelesen.
+    private final class CancelFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        func set() { lock.lock(); value = true; lock.unlock() }
+        var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    }
 
     private init(session: SSH, creds: Credentials) {
         self.session = session
@@ -139,34 +182,88 @@ final class SSHClient: @unchecked Sendable {
     }
 
     /// Whitelisted read-only command path.
-    func execute(_ command: String) async throws -> String {
+    func execute(_ command: String, priority: SSHCommandPriority = .poll) async throws -> String {
         try ReadOnlyGuard.assertSafe(command)
-        return try await rawExecute(command)
+        return try await rawExecute(command, priority: priority)
     }
 
     /// Use for mutating commands (sbatch, scancel, scontrol update). Bypasses
     /// the read-only guard — callers must confirm intent.
-    func executeWrite(_ command: String) async throws -> String {
-        try await rawExecute(command)
+    func executeWrite(_ command: String, priority: SSHCommandPriority = .userInitiated) async throws -> String {
+        try await rawExecute(command, priority: priority)
     }
 
-    private func rawExecute(_ command: String) async throws -> String {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
-            queue.async { [self] in
-                do {
-                    cont.resume(returning: try captureWithReconnect(command))
-                } catch let err as SSHError {
-                    cont.resume(throwing: err)
-                } catch {
-                    // Shout.SSHError is CustomStringConvertible and carries the
-                    // real libssh2 message (e.g. "channel failure", "socket
-                    // timeout"). `localizedDescription` would only bridge to the
-                    // useless "The operation couldn't be completed.
-                    // (Shout.SSHError error 1.)" — so describe it directly.
-                    cont.resume(throwing: SSHError.commandFailed(String(describing: error), -1))
+    private func rawExecute(_ command: String, priority: SSHCommandPriority) async throws -> String {
+        // Strukturierte Cancellation bis in die serielle Queue durchreichen:
+        // Ein abgebrochener SwiftUI-Task (geschlossenes Sheet, weggetippte
+        // Auswahl) darf sein bereits eingereihtes Kommando nicht mehr starten —
+        // sonst blockieren z. B. mehrere abgebrochene sreport-Läufe minutenlang
+        // alle Polls und Nutzeraktionen hinter sich.
+        try Task.checkCancellation()
+        let cancelled = CancelFlag()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+                enqueue(priority: priority) { [self] in
+                    // Eingereiht, aber noch nicht gestartet → überspringen.
+                    guard !cancelled.isSet else {
+                        cont.resume(throwing: CancellationError())
+                        return
+                    }
+                    do {
+                        cont.resume(returning: try captureWithReconnect(command))
+                    } catch let err as SSHError {
+                        cont.resume(throwing: err)
+                    } catch {
+                        // Shout.SSHError is CustomStringConvertible and carries the
+                        // real libssh2 message (e.g. "channel failure", "socket
+                        // timeout"). `localizedDescription` would only bridge to the
+                        // useless "The operation couldn't be completed.
+                        // (Shout.SSHError error 1.)" — so describe it directly.
+                        cont.resume(throwing: SSHError.commandFailed(String(describing: error), -1))
+                    }
                 }
             }
+        } onCancel: {
+            cancelled.set()
         }
+    }
+
+    /// Reiht `run` in die Pending-Liste ein und stößt die serielle Queue an.
+    /// Pro `queue.async`-Tick wird genau ein Pending-Eintrag ausgeführt — die
+    /// Anzahl der Ticks entspricht der Anzahl der Einträge, nur die
+    /// Reihenfolge wird von der Priorität bestimmt.
+    private func enqueue(priority: SSHCommandPriority, run: @escaping () -> Void) {
+        stateLock.lock()
+        switch priority {
+        case .userInitiated:
+            // Hinter bereits wartende Nutzeraktionen, vor alle Polls.
+            let idx = pendingCommands.firstIndex { $0.priority == .poll } ?? pendingCommands.count
+            pendingCommands.insert((priority, run), at: idx)
+        case .poll:
+            pendingCommands.append((priority, run))
+        }
+        stateLock.unlock()
+        queue.async { [self] in
+            stateLock.lock()
+            let next = pendingCommands.isEmpty ? nil : pendingCommands.removeFirst()
+            stateLock.unlock()
+            next?.run()
+        }
+    }
+
+    /// Markiert die Verbindung als vermutlich tot (Mac geht schlafen / ist
+    /// gerade aufgewacht). Threadsicher und nicht blockierend — bewusst NICHT
+    /// über die serielle Queue, damit der Hinweis auch ein bereits
+    /// eingereihtes Poll-Kommando noch vor dessen Start erreicht.
+    func markLinkSuspect() {
+        stateLock.lock(); linkSuspect = true; stateLock.unlock()
+    }
+
+    private func consumeLinkSuspect() -> Bool {
+        stateLock.lock(); defer { stateLock.unlock() }
+        let v = linkSuspect
+        linkSuspect = false
+        return v
     }
 
     /// Runs `command` on the current session. If the session itself errors
@@ -175,6 +272,22 @@ final class SSHClient: @unchecked Sendable {
     /// retry the command so callers self-heal instead of failing forever.
     /// MUST be called on `queue`.
     private func captureWithReconnect(_ command: String) throws -> String {
+        if consumeLinkSuspect() {
+            // Sleep/Wake: Session proaktiv neu aufbauen, statt erst auf dem
+            // halboffenen Socket in den 45-s-Timeout zu laufen.
+            try rebuildSession()
+        } else if let last = lastReconnectFailure {
+            guard Date().timeIntervalSince(last) >= reconnectCooldown else {
+                // Cool-down: Der Link ist bekannt tot — sofort scheitern, statt
+                // die serielle Queue mit weiteren 45–90-s-Versuchen zu sättigen
+                // (jedes wartende Kommando würde sonst denselben vollen
+                // Timeout-Zyklus wiederholen).
+                throw SSHError.notConnected
+            }
+            // Cool-down abgelaufen: Die alte Session ist bekannt tot — direkt
+            // neu verbinden, statt erst 45 s auf dem toten Socket zu warten.
+            try rebuildSession()
+        }
         let status: Int32
         let output: String
         let errOutput: String
@@ -185,7 +298,7 @@ final class SSHClient: @unchecked Sendable {
             // exit comes back as `status`, not a throw). Treat it as a dead
             // link: reconnect (may throw if the host is truly unreachable, or
             // SSHError.hostKeyMismatch if the key changed) and retry once.
-            session = try SSHClient.makeSession(creds)
+            try rebuildSession()
             (status, output, errOutput) = try session.captureWithError(command)
         }
         if status != 0 && output.isEmpty {
@@ -194,6 +307,27 @@ final class SSHClient: @unchecked Sendable {
             throw SSHError.commandFailed(err.isEmpty ? "(empty)" : err, status)
         }
         return output
+    }
+
+    /// Baut die Session neu auf und pflegt das Backoff-Fenster: Erfolg setzt
+    /// es zurück, ein Fehlschlag startet bzw. verdoppelt den Cool-down
+    /// (5 s → 60 s), in dem `captureWithReconnect` sofort mit `.notConnected`
+    /// scheitert. Bei Fehlschlag bleibt die alte Session erhalten.
+    /// MUST be called on `queue`.
+    private func rebuildSession() throws {
+        do {
+            session = try SSHClient.makeSession(creds)
+            lastReconnectFailure = nil
+            reconnectCooldown = SSHClient.reconnectCooldownBase
+        } catch {
+            if lastReconnectFailure != nil {
+                reconnectCooldown = min(reconnectCooldown * 2, SSHClient.reconnectCooldownMax)
+            } else {
+                reconnectCooldown = SSHClient.reconnectCooldownBase
+            }
+            lastReconnectFailure = Date()
+            throw error
+        }
     }
 
     /// Proactively rebuild the session. Call when the link likely died while the
@@ -205,14 +339,24 @@ final class SSHClient: @unchecked Sendable {
     func reconnect() async {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             queue.async { [self] in
-                if let fresh = try? SSHClient.makeSession(creds) { session = fresh }
+                // Expliziter Retry/Wake: Suspect-Flag und Outage-Backoff
+                // zurücksetzen, dann sofort versuchen. Best-effort — schlägt
+                // der Aufbau fehl, bleibt die alte Session und das
+                // Cool-down-Fenster greift wieder.
+                _ = consumeLinkSuspect()
+                lastReconnectFailure = nil
+                reconnectCooldown = SSHClient.reconnectCooldownBase
+                try? rebuildSession()
                 cont.resume()
             }
         }
     }
 
     func ping() async throws -> String {
-        try await rawExecute("echo slurm-ios-ok; hostname; squeue --version 2>/dev/null || true")
+        try await rawExecute(
+            "echo slurm-ios-ok; hostname; squeue --version 2>/dev/null || true",
+            priority: .userInitiated
+        )
     }
 
     func close() async {

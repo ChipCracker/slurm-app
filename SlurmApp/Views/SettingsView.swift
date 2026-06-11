@@ -25,7 +25,9 @@ struct SettingsView: View {
     @AppStorage("appearance") private var appearanceRaw: String = AppAppearance.system.rawValue
     @AppStorage(AppTheme.storageKey) private var accentThemeRaw: String = AppTheme.default.rawValue
     @AppStorage(AppColorTheme.storageKey) private var colorThemeRaw: String = AppColorTheme.default.rawValue
+    @AppStorage(LiquidGlassSetting.storageKey) private var liquidGlassEnabled: Bool = true
     @AppStorage("textSizeIndex") private var textSizeIndex: Int = 3
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var activeColorTheme: AppColorTheme { AppColorTheme(rawValue: colorThemeRaw) ?? .default }
 
@@ -115,6 +117,23 @@ struct SettingsView: View {
                  : "Automatisch folgt dem System (Hell/Dunkel).")
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)
+            // Nur auf OS-Versionen mit Liquid Glass anbieten (macOS 26+/iOS 26)
+            // — auf macOS 14/15 gibt es ohnehin nur den Frost-Fallback, der
+            // Schalter wäre wirkungslos. System-Chrome (Toolbar/Sidebar)
+            // bleibt vom Schalter unberührt; er gilt nur für die app-eigenen
+            // Glas-Flächen (Modals, Loader, Glas-Buttons).
+            if #available(macOS 26.0, iOS 26.0, *) {
+                Divider()
+                Toggle(isOn: $liquidGlassEnabled) {
+                    Text("Liquid Glass")
+                        .foregroundColor(Theme.textPrimary)
+                }
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+                Text("Native Glaseffekte von macOS/iOS 26. Deaktiviert: klassischer Frost-Look.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            }
         }
     }
 
@@ -127,7 +146,10 @@ struct SettingsView: View {
                 ForEach(AppColorTheme.allCases) { theme in
                     let selected = theme.rawValue == colorThemeRaw
                     Button {
-                        withAnimation(.smooth(duration: 0.35)) { colorThemeRaw = theme.rawValue }
+                        // Bewegung reduzieren ⇒ Wechsel ohne Animation.
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) {
+                            colorThemeRaw = theme.rawValue
+                        }
                     } label: {
                         themeSwatch(theme, selected: selected)
                     }
@@ -221,7 +243,7 @@ struct SettingsView: View {
 
     private var jobsListCard: some View {
         SettingsSection(title: "Jobs-Liste", systemImage: "list.bullet") {
-            Toggle(isOn: $runningJobsFirst.animation()) {
+            Toggle(isOn: $runningJobsFirst.animation(reduceMotion ? nil : .default)) {
                 Text("Laufende Jobs immer oben")
                     .foregroundColor(Theme.textPrimary)
             }
@@ -238,7 +260,7 @@ struct SettingsView: View {
 
     private var dashboardCard: some View {
         SettingsSection(title: "Dashboard (Jobs)", systemImage: "rectangle.3.group") {
-            Toggle(isOn: $dashboardEnabled.animation()) {
+            Toggle(isOn: $dashboardEnabled.animation(reduceMotion ? nil : .default)) {
                 Text("Anpassbares Grid statt Split-Ansicht")
                     .foregroundColor(Theme.textPrimary)
             }
@@ -280,7 +302,7 @@ struct SettingsView: View {
         let selected = dashboard.presetName == preset.label
         return Button {
             dashboard.apply(preset)
-            withAnimation { dashboardEnabled = true }
+            withMotion { dashboardEnabled = true }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: preset.symbol)
