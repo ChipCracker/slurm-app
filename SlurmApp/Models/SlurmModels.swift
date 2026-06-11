@@ -18,6 +18,18 @@ struct Job: Identifiable, Hashable {
 
     var isRunning: Bool { state.uppercased() == "R" || state.uppercased() == "RUNNING" }
     var isPending: Bool { state.uppercased() == "PD" || state.uppercased() == "PENDING" }
+
+    /// States in which a job still holds its node/GPU allocation. Running plus
+    /// COMPLETING (CG) and SUSPENDED (S): both still occupy GPUs, so GPU-usage
+    /// accounting must include them — otherwise capacity briefly reads as free
+    /// while a job is finishing. Kept separate from `isRunning` so attach/cancel
+    /// eligibility (which keys on `isRunning`) is unaffected.
+    var holdsGpuAllocation: Bool {
+        switch state.uppercased() {
+        case "R", "RUNNING", "CG", "COMPLETING", "S", "SUSPENDED": return true
+        default: return false
+        }
+    }
 }
 
 struct Partition: Identifiable, Hashable {
@@ -191,6 +203,10 @@ struct ClusterNode: Identifiable, Hashable {
 }
 
 struct GpuStat: Identifiable, Hashable {
+    /// Sequential slot across the whole nvidia-smi output. A multi-node job runs
+    /// nvidia-smi on every node, so `index` (per-node GPU index) repeats — `slot`
+    /// keeps each row uniquely Identifiable in SwiftUI.
+    let slot: Int
     let index: Int
     let name: String
     let utilizationPercent: Int
@@ -200,7 +216,7 @@ struct GpuStat: Identifiable, Hashable {
     let powerLimitW: Double
     let temperatureC: Int
 
-    var id: Int { index }
+    var id: Int { slot }
     var memoryRatio: Double {
         memoryTotalMiB == 0 ? 0 : Double(memoryUsedMiB) / Double(memoryTotalMiB)
     }

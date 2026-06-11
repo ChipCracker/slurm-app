@@ -15,10 +15,22 @@ final class JobsViewModel: ObservableObject {
     @Published var partitionDetails: [String: [String: String]] = [:]
     @Published var loading = false
     @Published var error: String?
-    @Published var allUsers: Bool = false
-    @Published var runningOnly: Bool = false
-    @Published var search: String = ""
+    @Published var allUsers: Bool = false { didSet { if oldValue != allUsers { recomputeFiltered() } } }
+    @Published var runningOnly: Bool = false { didSet { if oldValue != runningOnly { recomputeFiltered() } } }
+    @Published var search: String = "" { didSet { if oldValue != search { recomputeFiltered() } } }
     @Published var initialFetchDone: Bool = false
+
+    // MARK: – Derived-row cache (perf)
+    // `filtered()` + the filter-bar stats used to be recomputed many times per
+    // render and on every keystroke (O(n) each, several passes). They are now
+    // computed ONCE whenever an input actually changes and served from a cache.
+    struct Stats: Equatable { var running = 0; var pending = 0; var gpus = 0 }
+    private(set) var filteredJobs: [Job] = []
+    private(set) var stats = Stats()
+    /// Bumped on every recompute so the view's `visibleJobs` memo invalidates.
+    private(set) var filteredSignature = 0
+    private var visibleCacheKey: Int?
+    private var visibleCache: [Job] = []
     /// Per-resource in-flight flags so each slow stats card shimmers until ITS
     /// own data lands — the job list (and `initialFetchDone`) finishes much
     /// earlier and must not stop these from showing a loading state.
@@ -55,7 +67,10 @@ final class JobsViewModel: ObservableObject {
 
     private weak var appState: AppState?
 
-    func bind(_ appState: AppState) { self.appState = appState }
+    func bind(_ appState: AppState) {
+        self.appState = appState
+        recomputeFiltered()   // username now known → keep the filter cache honest
+    }
 
     /// Fetch (and cache) details + node list for one partition. Cheap — used
     /// when the user expands a partition in the Inspector's GPU-allocation
@@ -78,41 +93,110 @@ final class JobsViewModel: ObservableObject {
         lastPartitionFetch[name] = Date()
     }
 
-    /// Jobs visible in the table after applying the user filter.
+    /// Jobs after applying only the user filter (allUsers). Drives the
+    /// filter-bar stats. Cheap recompute keeps this honest.
     var jobs: [Job] {
-        guard let me = appState?.credentials?.username else { return allJobs }
-        return allUsers ? allJobs : allJobs.filter { $0.user == me }
+        guard let me = appState?.credentials?.username, !allUsers else { return allJobs }
+        return allJobs.filter { $0.user == me }
     }
 
-    func filtered() -> [Job] {
-        var base = jobs
-        if runningOnly { base = base.filter(\.isRunning) }
-        guard !search.isEmpty else { return base }
-        return base.filter { j in
-            j.jobId.localizedCaseInsensitiveContains(search) ||
-            j.name.localizedCaseInsensitiveContains(search) ||
-            j.user.localizedCaseInsensitiveContains(search) ||
-            j.partition.localizedCaseInsensitiveContains(search) ||
-            j.state.localizedCaseInsensitiveContains(search)
+    /// Cached filtered list (user + runningOnly + search). Recomputed only when
+    /// an input changes, not per render/keystroke.
+    func filtered() -> [Job] { filteredJobs }
+
+    /// Recompute the cached filtered list and stats. Call when allJobs or the
+    /// username changes (the filter toggles trigger it via their didSet).
+    func recomputeFiltered() {
+        let me = appState?.credentials?.username
+        let base = (allUsers || me == nil) ? allJobs : allJobs.filter { $0.user == me }
+
+        var s = Stats()
+        for j in base {
+            if j.isRunning { s.running += 1; s.gpus += j.gpus }
+            else if j.isPending { s.pending += 1 }
         }
+        stats = s
+
+        var result = base
+        if runningOnly { result = result.filter(\.isRunning) }
+        if !search.isEmpty {
+            // Lowercase the query once and match against lowered fields instead
+            // of 5× localizedCaseInsensitiveContains per job.
+            let q = search.lowercased()
+            result = result.filter { j in
+                j.jobId.lowercased().contains(q) || j.name.lowercased().contains(q) ||
+                j.user.lowercased().contains(q) || j.partition.lowercased().contains(q) ||
+                j.state.lowercased().contains(q)
+            }
+        }
+        filteredJobs = result
+        filteredSignature &+= 1
+        visibleCacheKey = nil   // invalidate the sort memo
     }
 
-    func refresh() async {
+    /// Sorted + running-first-partitioned visible rows, memoized so the table,
+    /// height calc, cursor math and stats don't each re-sort within one render.
+    func visibleJobs(sortOrder: [KeyPathComparator<Job>], runningFirst: Bool) -> [Job] {
+        var hasher = Hasher()
+        hasher.combine(filteredSignature)
+        hasher.combine(runningFirst)
+        for c in sortOrder { hasher.combine(c.keyPath); hasher.combine(c.order) }
+        let key = hasher.finalize()
+        if key == visibleCacheKey { return visibleCache }
+        var sorted = filteredJobs.sorted(using: sortOrder)
+        if runningFirst { sorted = sorted.filter(\.isRunning) + sorted.filter { !$0.isRunning } }
+        visibleCacheKey = key
+        visibleCache = sorted
+        return sorted
+    }
+
+    /// Guards against overlapping refreshes (the initial `.task`, the scenePhase
+    /// catch-up and a manual refresh can all fire on section re-entry — without
+    /// this they enqueued duplicate squeue/sreport/quota fetches).
+    private var refreshing = false
+    /// Partition GPU totals are cluster-static; cache them so the 10s poll
+    /// doesn't re-run `sinfo -N` every tick (only `squeue` actually changes).
+    private var cachedParts: [PartitionGpu] = []
+    private var lastPartsFetch: Date = .distantPast
+    static let partsRefreshInterval: TimeInterval = 300   // 5 min
+
+    /// `silent` (used by the 10s poll) skips the `loading` toggle so a background
+    /// tick doesn't trigger two extra full-body passes nothing displays.
+    func refresh(silent: Bool = false) async {
         guard let slurm = appState?.slurm else { return }
+        guard !refreshing else { return }
+        refreshing = true; defer { refreshing = false }
         let me = appState?.credentials?.username ?? ""
-        loading = true
-        defer { loading = false }
+        if !silent { loading = true }
+        defer { if !silent { loading = false } }
         do {
             let jobsList = try await slurm.fetchJobs(allUsers: true, currentUser: "")
-            let parts = try await slurm.fetchPartitionGpus()
-            self.allJobs = jobsList
-            self.gpuUsage = SlurmParser
+            // Refetch the static partition GRES at most every 5 min, not per tick.
+            let parts: [PartitionGpu]
+            if cachedParts.isEmpty || Date().timeIntervalSince(lastPartsFetch) > Self.partsRefreshInterval {
+                parts = try await slurm.fetchPartitionGpus()
+                cachedParts = parts
+                lastPartsFetch = Date()
+            } else {
+                parts = cachedParts
+            }
+            // Publish only on real change — on a quiet cluster the output is
+            // usually identical, so this avoids a full JobsView re-render cascade
+            // every tick. Job/PartitionUsage are Equatable.
+            if jobsList != allJobs {
+                allJobs = jobsList
+                recomputeFiltered()
+            }
+            let usage = SlurmParser
                 .computeUsage(jobs: jobsList, partitions: parts, currentUser: me)
                 .sorted { $0.partition < $1.partition }
-            self.error = nil
-            self.lastFullRefresh = Date()
+            if usage != gpuUsage { gpuUsage = usage }
+            if error != nil { error = nil }
+            lastFullRefresh = Date()
+            appState?.reportConnectionHealthy()
         } catch {
             self.error = error.localizedDescription
+            appState?.reportConnectionTrouble(error.localizedDescription)
         }
 
         // Jobs + partitions are in → stop the table skeleton NOW, before the
@@ -222,6 +306,7 @@ final class JobsViewModel: ObservableObject {
     func loadMockIfRequested() -> Bool {
         guard ProcessInfo.processInfo.environment["SLURMIOS_UIMOCK"] == "1" else { return false }
         allJobs = Self.mockJobs
+        recomputeFiltered()
         gpuUsage = Self.mockUsage
         gpuHours = Self.mockGpuHours
         diskQuotas = Self.mockDiskQuotas
@@ -339,7 +424,6 @@ struct JobsView: View {
     #if os(iOS)
     @State private var selectionMode = false               // iOS Auswahl-Modus
     #endif
-    @State private var partitionCycleIndex: Int = 0
     /// +1 = last move was downward, -1 = upward. Space-mark and other
     /// auto-advance actions use this so they keep walking in the user's
     /// current direction instead of always going down.
@@ -397,6 +481,13 @@ struct JobsView: View {
             .glassModal(isPresented: $showGpuHoursSheet) { gpuHoursSheet }
         }
         .glassModal(isPresented: $showNodesSheet) { nodesSheet }
+        // iPad-Dashboard hat KEIN Inspector-Sheet, das die Partition-/GPU-Hours-
+        // Sheets hostet — dort würden Taps auf Dashboard-Widgets ins Leere laufen.
+        // Im Dashboard-Modus daher direkt am Body präsentieren; die Bindings sind
+        // außerhalb des Dashboards inert, sodass die Inspector-Variante oben
+        // (für den gestapelten Fall) ungestört bleibt.
+        .glassModal(item: dashboardPartitionBinding) { partitionSheet($0) }
+        .glassModal(isPresented: dashboardGpuHoursBinding) { gpuHoursSheet }
         #else
         .glassModal(item: $sheetPartition) { partitionSheet($0) }
         .glassModal(isPresented: $showGpuHoursSheet) { gpuHoursSheet }
@@ -410,6 +501,11 @@ struct JobsView: View {
         }
         .background(hiddenShortcuts)
         .background(paneCycleShortcuts)
+        #if os(iOS)
+        // Haptic feedback for touch interactions (no-op on Mac).
+        .sensoryFeedback(.selection, trigger: marked)
+        .sensoryFeedback(.success, trigger: batchResult)
+        #endif
         .confirmationDialog(
             cancelConfirmJobs.count == 1
                 ? "Job \(cancelConfirmJobs.first?.jobId ?? "") abbrechen?"
@@ -419,16 +515,22 @@ struct JobsView: View {
                 set: { if !$0 { cancelConfirmJobs = [] } }
             )
         ) {
-            Button("scancel", role: .destructive) {
+            Button("Job beenden", role: .destructive) {
                 let jobs = cancelConfirmJobs
+                cancelConfirmJobs = []
                 Task {
-                    for j in jobs {
-                        _ = try? await appState.slurm?.cancelJob(j.jobId)
+                    do {
+                        // One scancel for the whole set instead of N round-trips.
+                        try await appState.slurm?.cancelJobs(jobs.map(\.jobId))
+                    } catch {
+                        // Surface the real error (stderr now reaches us) instead
+                        // of silently doing nothing.
+                        batchResult = "scancel fehlgeschlagen: \(error.localizedDescription)"
                     }
-                    cancelConfirmJobs = []
+                    await vm.refresh()   // reflect the change in the list
                 }
             }
-            Button("Abbrechen", role: .cancel) { cancelConfirmJobs = [] }
+            Button("Behalten", role: .cancel) { cancelConfirmJobs = [] }
         }
         // Batch: Werte-Sheet (QoS/Partition)
         .sheet(item: $batchValueAction) { action in
@@ -515,7 +617,17 @@ struct JobsView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 10 * 1_000_000_000)
                 if Task.isCancelled { break }
-                await vm.refresh()
+                await vm.refresh(silent: true)   // background tick: no loading flash
+            }
+        }
+        // Jump to a job (from a bookmark tap): select it if present, else seed
+        // the search so the user can see why it's gone.
+        .onReceive(NotificationCenter.default.publisher(for: .openJob)) { note in
+            guard let jid = note.object as? String else { return }
+            if vm.allJobs.contains(where: { $0.id == jid }) {
+                cursor = jid
+            } else {
+                vm.search = jid
             }
         }
         .onChange(of: anyModalOpen) { _, open in
@@ -577,15 +689,22 @@ struct JobsView: View {
             }
         }
         .onChange(of: vm.allJobs) { _, newJobs in
-            // Drop any cursor / marked IDs that no longer exist.
             let alive = Set(newJobs.map(\.id))
-            if let c = cursor, !alive.contains(c) { cursor = nil }
             marked = marked.intersection(alive)
-            ensureCursor()
+            if let c = cursor, !alive.contains(c) {
+                // The selected job left the queue — clear the selection but do
+                // NOT yank the cursor to row 0 mid-read (that jumped to an
+                // unrelated job on macOS / popped the pushed detail on iOS).
+                cursor = nil
+            } else {
+                ensureCursor()
+            }
         }
-        .onChange(of: vm.runningOnly) { _, _ in ensureCursor() }
-        .onChange(of: vm.allUsers)    { _, _ in ensureCursor() }
-        .onChange(of: vm.search)      { _, _ in ensureCursor() }
+        // Prune marks to what's actually visible when a filter changes, so the
+        // marked count and bulk actions never include rows the user can't see.
+        .onChange(of: vm.runningOnly) { _, _ in pruneMarkedToVisible(); ensureCursor() }
+        .onChange(of: vm.allUsers)    { _, _ in pruneMarkedToVisible(); ensureCursor() }
+        .onChange(of: vm.search)      { _, _ in pruneMarkedToVisible(); ensureCursor() }
         .onChange(of: marked)         { _, m in vm.savedMarked = m }
         .onChange(of: sortOrder)      { _, s in vm.savedSortOrder = s }
         .onAppear { restoreSelection() }
@@ -845,7 +964,10 @@ struct JobsView: View {
         #else
         ToolbarItemGroup(placement: .primaryAction) {
             allUsersToggle
-            Button { Task { await vm.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+            Button { Task { await vm.refresh() } } label: {
+                Image(systemName: "arrow.clockwise")
+                    .symbolEffect(.pulse, options: .repeating, isActive: vm.loading)
+            }
                 .keyboardShortcut(Shortcut.refresh.key, modifiers: Shortcut.refresh.modifiers)
                 .help("Aktualisieren (r)")
             // Interaktive Session = srun --pty in Terminal.app → nur macOS.
@@ -909,6 +1031,18 @@ struct JobsView: View {
     private var iPadDashboardActive: Bool {
         horizontalSizeClass == .regular && dashboardEnabled
     }
+
+    /// Body-level partition-sheet presenter, active ONLY in iPad dashboard mode
+    /// (where the inspector sheet that normally hosts it isn't mounted). Inert
+    /// otherwise so it never double-presents with the inspector-nested one.
+    private var dashboardPartitionBinding: Binding<PartitionSelection?> {
+        Binding(get: { iPadDashboardActive ? sheetPartition : nil },
+                set: { if iPadDashboardActive { sheetPartition = $0 } })
+    }
+    private var dashboardGpuHoursBinding: Binding<Bool> {
+        Binding(get: { iPadDashboardActive ? showGpuHoursSheet : false },
+                set: { if iPadDashboardActive { showGpuHoursSheet = $0 } })
+    }
     #endif
 
     /// Cluster of invisible buttons that own the single-letter shortcuts.
@@ -918,8 +1052,14 @@ struct JobsView: View {
     /// Any modal is on top of the table — silence Job-section shortcuts so
     /// they don't fire while the user is reading help / submitting / etc.
     private var anyModalOpen: Bool {
-        showHelp || showSubmit || showInteractive || showGpuHoursSheet
-            || sheetPartition != nil || logModal != nil
+        var open = showHelp || showSubmit || showInteractive || showGpuHoursSheet
+            || sheetPartition != nil || logModal != nil || showNodesSheet
+        #if os(iOS)
+        // The cluster inspector is a sheet on iOS — its presence must also
+        // silence the (hardware-keyboard) table shortcuts underneath.
+        open = open || showInspectorSheet
+        #endif
+        return open
     }
 
     private var hiddenShortcuts: some View {
@@ -1054,11 +1194,10 @@ struct JobsView: View {
 
     /// QoS/Partition-Optionen einmalig vom Cluster holen (für das Werte-Sheet).
     private func loadActionOptions() async {
-        guard let slurm = appState.slurm else { return }
-        if availableQos.isEmpty, let q = try? await slurm.fetchAvailableQos() { availableQos = q }
-        if availablePartitions.isEmpty, let p = try? await slurm.fetchAvailablePartitions() {
-            availablePartitions = p
-        }
+        // Shared connection-wide cache — avoids refetching the cluster-static
+        // lists here and again in every JobDetailView.
+        if availableQos.isEmpty { availableQos = await appState.cachedAvailableQos() }
+        if availablePartitions.isEmpty { availablePartitions = await appState.cachedAvailablePartitions() }
     }
 
     private func startBatch(_ action: BatchAction) {
@@ -1081,19 +1220,28 @@ struct JobsView: View {
         guard let slurm = appState.slurm else { return }
         Task {
             var ok = 0, failed = 0
-            for j in jobs {
-                do {
-                    switch action {
-                    case .cancel:    _ = try await slurm.cancelJob(j.jobId)
-                    case .qos:       _ = try await slurm.updateJobQos(j.jobId, qos: value ?? "")
-                    case .partition: _ = try await slurm.updateJobPartition(j.jobId, partition: value ?? "")
-                    case .hold:      _ = try await slurm.holdJob(j.jobId)
-                    case .release:   _ = try await slurm.releaseJob(j.jobId)
-                    case .requeue:   _ = try await slurm.requeueJob(j.jobId)
+            if action == .cancel {
+                // Batched scancel — one SSH round-trip for the whole selection
+                // instead of one per job.
+                do { try await slurm.cancelJobs(jobs.map(\.jobId)); ok = jobs.count }
+                catch { failed = jobs.count }
+            } else {
+                for j in jobs {
+                    // Stop mutating the cluster if the user disconnected mid-loop.
+                    guard appState.slurm != nil else { break }
+                    do {
+                        switch action {
+                        case .cancel:    break   // handled above (batched)
+                        case .qos:       _ = try await slurm.updateJobQos(j.jobId, qos: value ?? "")
+                        case .partition: _ = try await slurm.updateJobPartition(j.jobId, partition: value ?? "")
+                        case .hold:      _ = try await slurm.holdJob(j.jobId)
+                        case .release:   _ = try await slurm.releaseJob(j.jobId)
+                        case .requeue:   _ = try await slurm.requeueJob(j.jobId)
+                        }
+                        ok += 1
+                    } catch {
+                        failed += 1
                     }
-                    ok += 1
-                } catch {
-                    failed += 1
                 }
             }
             let valuePart = value.map { " → \($0)" } ?? ""
@@ -1142,12 +1290,16 @@ struct JobsView: View {
                   let path = details.value("Command")
             else { return }
             _ = script   // not needed locally — Terminal opens the remote path
+            // Single-quote the remote path so a path with spaces/metacharacters
+            // can't break the editor command (the whole remoteCommand is then
+            // single-quoted again by TerminalLauncher for the ssh argument).
+            let safePath = "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
             await MainActor.run {
                 TerminalLauncher.openSSH(
                     host: creds.host,
                     user: creds.username,
                     port: creds.port,
-                    remoteCommand: "${EDITOR:-vim} \(path)"
+                    remoteCommand: "${EDITOR:-vim} \(safePath)"
                 )
             }
         }
@@ -1161,20 +1313,18 @@ struct JobsView: View {
     private func cyclePartitionSheet() {
         guard !vm.gpuUsage.isEmpty else { return }
         let parts = vm.gpuUsage.map(\.partition)
-        if sheetPartition == nil {
-            // First press: open the first partition.
-            partitionCycleIndex = 0
+        // Derive the position from the ACTUALLY open sheet, so `g` stays in sync
+        // even when the sheet was opened via the inspector (not via `g`) or the
+        // partition list reordered. After the last, close it (a long `g`-mash
+        // exits cleanly).
+        let nextIdx: Int
+        if let open = sheetPartition?.name, let i = parts.firstIndex(of: open) {
+            nextIdx = i + 1
+            if nextIdx >= parts.count { sheetPartition = nil; return }
         } else {
-            // Subsequent press: advance. After the last, close the sheet
-            // (so a long `g`-mash always exits cleanly).
-            partitionCycleIndex += 1
-            if partitionCycleIndex >= parts.count {
-                sheetPartition = nil
-                partitionCycleIndex = 0
-                return
-            }
+            nextIdx = 0
         }
-        let name = parts[partitionCycleIndex]
+        let name = parts[nextIdx]
         sheetPartition = PartitionSelection(name: name)
         Task { await vm.loadPartition(name) }
     }
@@ -1241,7 +1391,9 @@ struct JobsView: View {
         #if os(macOS)
         if inspectorOpen && !dashboardEnabled { order.append(.inspector) }
         #else
-        if inspectorOpen { order.append(.inspector) }
+        // iOS: the inspector is a SHEET, gated by showInspectorSheet — not the
+        // macOS-only `inspectorOpen` AppStorage (which is irrelevant here).
+        if showInspectorSheet { order.append(.inspector) }
         #endif
 
         let current = focusedPane ?? .table
@@ -1263,12 +1415,20 @@ struct JobsView: View {
 
     /// Materialised, sorted, filtered job list — the row order the user
     /// sees right now in the table.
+    /// Materialised, sorted, filtered job list — the row order the user sees.
+    /// Memoized in the VM so the table, height calc and cursor math don't each
+    /// re-sort within a single render.
     private var visibleJobs: [Job] {
-        let sorted = vm.filtered().sorted(using: sortOrder)
-        guard runningJobsFirst else { return sorted }
-        // Stabile Partition: laufende Jobs zuerst, jede Gruppe behält ihre
-        // Spaltensortierung.
-        return sorted.filter(\.isRunning) + sorted.filter { !$0.isRunning }
+        vm.visibleJobs(sortOrder: sortOrder, runningFirst: runningJobsFirst)
+    }
+
+    /// Keep only the marks that are currently visible (after the active
+    /// filters), so the count and bulk actions match what the user sees.
+    private func pruneMarkedToVisible() {
+        guard !marked.isEmpty else { return }
+        let visible = Set(vm.filteredJobs.map(\.id))
+        let pruned = marked.intersection(visible)
+        if pruned != marked { marked = pruned }
     }
 
     /// Make sure a cursor exists whenever we have data, so the first ↑/↓
@@ -1332,6 +1492,7 @@ struct JobsView: View {
     /// selection/cursor/search reset.
     private func closeTopmostModal() {
         if logModal != nil        { logModal = nil; return }
+        if showNodesSheet         { showNodesSheet = false; return }
         if sheetPartition  != nil { sheetPartition = nil; return }
         if showGpuHoursSheet      { showGpuHoursSheet = false; return }
         if showHelp               { showHelp = false; return }
@@ -1409,6 +1570,7 @@ struct JobsView: View {
 
     private func handleEscape() {
         if logModal != nil { logModal = nil; return }
+        if showNodesSheet { showNodesSheet = false; return }
         if sheetPartition != nil { sheetPartition = nil; return }
         if showGpuHoursSheet { showGpuHoursSheet = false; return }
         if showHelp { showHelp = false; return }
@@ -1497,6 +1659,7 @@ struct JobsView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Theme.background)
+        .refreshable { await vm.refresh() }   // Pull-to-refresh (touch)
         .redacted(reason: initialLoad ? .placeholder : [])
         .overlay {
             if !initialLoad && data.isEmpty {
@@ -1579,8 +1742,16 @@ struct JobsView: View {
     }
 
     private var connectionDot: some View {
-        Circle().fill(jobsStatusColor).frame(width: 10, height: 10)
+        // Breathes while connecting/degraded, calm when connected.
+        BreathingDot(color: jobsStatusColor, active: connectionUnsettled, size: 10)
             .accessibilityLabel(Text(appState.connectionStatus.label))
+    }
+
+    private var connectionUnsettled: Bool {
+        switch appState.connectionStatus {
+        case .connecting, .degraded: return true
+        default: return false
+        }
     }
 
     private var jobsStatusColor: Color {
@@ -1723,32 +1894,43 @@ struct JobsView: View {
             HStack(spacing: 6) {
                 Circle().fill(Theme.success).frame(width: 8, height: 8)
                 Text("\(running)").foregroundColor(Theme.textPrimary)
+                    .contentTransition(.numericText())
                 Text("running").foregroundColor(Theme.textSecondary)
             }
             HStack(spacing: 6) {
                 Circle().fill(Theme.warning).frame(width: 8, height: 8)
                 Text("\(pending)").foregroundColor(Theme.textPrimary)
+                    .contentTransition(.numericText())
                 Text("pending").foregroundColor(Theme.textSecondary)
             }
             HStack(spacing: 6) {
                 Image(systemName: "cpu").foregroundColor(Theme.purple)
                 Text("\(gpus) GPU").foregroundColor(Theme.textPrimary)
+                    .contentTransition(.numericText())
             }
             Spacer()
             if !marked.isEmpty {
                 Text("\(marked.count) markiert")
                     .foregroundColor(Theme.accent)
+                    .contentTransition(.numericText())
+                    .transition(.opacity)
             }
             if vm.runningOnly {
                 Text("nur running")
                     .foregroundColor(Theme.warning)
+                    .transition(.opacity)
             }
             Text("\(filteredCount) sichtbar")
                 .foregroundColor(Theme.textSecondary)
+                .contentTransition(.numericText())
         }
         .font(.caption.monospacedDigit())
         .padding(.horizontal, 14).padding(.vertical, 8)
         .background(Theme.surface)
+        // Count-ups roll smoothly as the cluster changes (honours Reduce Motion).
+        .motion(Motion.smooth, value: vm.stats)
+        .motion(Motion.smooth, value: filteredCount)
+        .motion(Motion.snappy, value: marked.isEmpty)
     }
 
     /// White text on the selected (blue) row so coloured cell text stays
@@ -1981,10 +2163,10 @@ struct JobsView: View {
 
     // MARK: – Stats
 
-    private var running: Int { vm.jobs.filter(\.isRunning).count }
-    private var pending: Int { vm.jobs.filter(\.isPending).count }
-    private var gpus: Int { vm.jobs.filter(\.isRunning).reduce(0) { $0 + $1.gpus } }
-    private var filteredCount: Int { vm.filtered().count }
+    private var running: Int { vm.stats.running }
+    private var pending: Int { vm.stats.pending }
+    private var gpus: Int { vm.stats.gpus }
+    private var filteredCount: Int { vm.filteredJobs.count }
 
     /// Plausibly-shaped job rows used while the first squeue fetch is in
     /// flight. Combined with `.redacted(.placeholder)` they render as grey

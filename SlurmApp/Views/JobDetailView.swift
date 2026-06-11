@@ -13,9 +13,12 @@ enum LogStream {
 struct LogModalSelection: Identifiable {
     let vm: JobDetailViewModel
     let stream: LogStream
+    /// Captured at construction so `id` stays nonisolated (vm.job is now
+    /// MainActor-isolated @Published state).
+    let jobId: String
     var id: String {
         let key = stream == .stderr ? "stderr" : "stdout"
-        return "\(key)-\(vm.job.jobId)"
+        return "\(key)-\(jobId)"
     }
 }
 
@@ -40,15 +43,35 @@ final class JobDetailViewModel: ObservableObject {
     @Published var followMode: Bool = false
     @Published var availableQos: [String] = []
     @Published var availablePartitions: [String] = []
+    /// Whether each log stream actually returned content (vs. a placeholder like
+    /// "[kein stderr-Pfad]"). The placeholder strings are never empty, so
+    /// emptiness can't be used to decide which stream is "active".
+    @Published var stdoutHasContent: Bool = false
+    @Published var stderrHasContent: Bool = false
 
-    let job: Job
+    /// The job snapshot — `@Published var` (not `let`) so a state/runtime change
+    /// from the jobs poll flows in (the view's `.id(job.id)` keeps the same VM
+    /// instance, so without this the header, gating and live-GPU poll froze at
+    /// selection time). Synced by the view via `.onChange(of: job)`.
+    @Published var job: Job
     private weak var appState: AppState?
+    // Reentrancy guards: the initial load() and the 5s poll can both fire a
+    // refresh; the flag is set synchronously on the MainActor before any await,
+    // so a concurrent call returns instead of double-issuing SSH commands.
+    private var statsInFlight = false
+    private var logsInFlight = false
 
     init(job: Job) { self.job = job }
 
     func bind(_ s: AppState) { self.appState = s }
 
     func load() async {
+        // Debounce rapid cursor movement: arrow-keying past this row cancels the
+        // task before we fire the per-selection SSH storm. 250 ms is below human
+        // dwell time but skips intermediate rows.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        if Task.isCancelled { return }
+
         // Always settle the skeleton state, even on an early exit — otherwise a
         // detail pane opened while disconnected would shimmer forever.
         defer {
@@ -81,8 +104,16 @@ final class JobDetailViewModel: ObservableObject {
         self.script = (try? await slurm.fetchBatchScript(job.jobId)) ?? ""
         scriptLoaded = true
 
-        self.availableQos = (try? await slurm.fetchAvailableQos()) ?? []
-        self.availablePartitions = (try? await slurm.fetchAvailablePartitions()) ?? []
+        // QoS/partition lists are cluster-static and only needed when the pills
+        // are editable (own, not-finished job). Skip the two SSH round-trips
+        // entirely otherwise, and serve them from the connection-wide cache so
+        // arrow-keying through rows doesn't refetch them per selection.
+        let me = appState?.credentials?.username
+        let editable = job.user == me && (job.isRunning || job.isPending)
+        if editable, let appState {
+            self.availableQos = await appState.cachedAvailableQos()
+            self.availablePartitions = await appState.cachedAvailablePartitions()
+        }
     }
 
     func updateQos(_ newQos: String) async -> String? {
@@ -106,6 +137,8 @@ final class JobDetailViewModel: ObservableObject {
     }
 
     func refreshLogs() async {
+        guard !logsInFlight else { return }
+        logsInFlight = true; defer { logsInFlight = false }
         guard let slurm = appState?.slurm else { return }
         let rawOut = details?.stdOut.flatMap { $0 == "(null)" ? nil : $0 }
         let rawErr = details?.stdErr.flatMap { $0 == "(null)" ? nil : $0 }
@@ -114,19 +147,21 @@ final class JobDetailViewModel: ObservableObject {
         self.stdoutPath = outPath
         self.stderrPath = errPath
 
-        self.stdout = await readLog(slurm: slurm, path: outPath, stream: "stdout")
-        self.stderr = await readLog(slurm: slurm, path: errPath, stream: "stderr")
+        let out = await readLog(slurm: slurm, path: outPath, stream: "stdout")
+        let err = await readLog(slurm: slurm, path: errPath, stream: "stderr")
+        self.stdout = out.text;  self.stdoutHasContent = out.hasContent
+        self.stderr = err.text;  self.stderrHasContent = err.hasContent
     }
 
-    private func readLog(slurm: SlurmService, path: String?, stream: String) async -> String {
+    private func readLog(slurm: SlurmService, path: String?, stream: String) async -> (text: String, hasContent: Bool) {
         guard let path, !path.isEmpty else {
-            return "[Kein \(stream)-Pfad in scontrol show job]"
+            return ("[Kein \(stream)-Pfad in scontrol show job]", false)
         }
         do {
             let text = try await slurm.tailLog(path: path, lines: 200)
-            return text.isEmpty ? "[\(stream) ist (noch) leer]\n\(path)" : text
+            return text.isEmpty ? ("[\(stream) ist (noch) leer]\n\(path)", false) : (text, true)
         } catch {
-            return "[Konnte \(stream) nicht lesen: \(error.localizedDescription)]\n\(path)"
+            return ("[Konnte \(stream) nicht lesen: \(error.localizedDescription)]\n\(path)", false)
         }
     }
 
@@ -148,6 +183,8 @@ final class JobDetailViewModel: ObservableObject {
     }
 
     func refreshLiveStats() async {
+        guard !statsInFlight else { return }
+        statsInFlight = true; defer { statsInFlight = false }
         guard let slurm = appState?.slurm, job.isRunning else { return }
         do {
             let stats = try await slurm.liveGpuStats(jobId: job.jobId)
@@ -163,6 +200,10 @@ final class JobDetailViewModel: ObservableObject {
 struct JobDetailView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var bookmarks: BookmarksStore
+    /// Fresh job snapshot from the parent on every render. The view identity is
+    /// `.id(job.id)`, so it stays stable across state changes — this property
+    /// carries the new state/runtime in and is synced into the VM below.
+    let job: Job
     @StateObject private var vm: JobDetailViewModel
     @State private var showCancelConfirm = false
     @State private var actionMessage: String?
@@ -188,6 +229,7 @@ struct JobDetailView: View {
     private let onExpandLog: (LogModalSelection) -> Void
 
     init(job: Job, onExpandLog: @escaping (LogModalSelection) -> Void = { _ in }) {
+        self.job = job
         _vm = StateObject(wrappedValue: JobDetailViewModel(job: job))
         self.onExpandLog = onExpandLog
     }
@@ -222,6 +264,9 @@ struct JobDetailView: View {
                     }
                     .padding()
                 }
+                #if os(iOS)
+                .refreshable { await vm.load() }   // Pull-to-refresh (touch)
+                #endif
                 .background(detailShortcuts(proxy: proxy))
             }
         }
@@ -245,6 +290,13 @@ struct JobDetailView: View {
                 if showsLiveGpu { await vm.refreshLiveStats() }
             }
         }
+        // Keep the VM's job snapshot live as the jobs poll updates this row, so
+        // the header/runtime tick, PD→R reveals the live-GPU card and starts the
+        // poll, and a finished job stops the 5s srun loop instead of hammering a
+        // dead allocation forever.
+        .onChange(of: job) { _, newJob in
+            if vm.job != newJob { vm.job = newJob }
+        }
         .alert("Job abbrechen?", isPresented: $showCancelConfirm) {
             Button("Abbrechen", role: .cancel) {}
             Button("Bestätigen", role: .destructive) { Task { await cancel() } }
@@ -263,8 +315,10 @@ struct JobDetailView: View {
     /// Open the more relevant of the two log windows: stderr when it has
     /// content (errors are what you usually want to read), otherwise stdout.
     private func expandActiveLog() {
-        let stream: LogStream = !vm.stderr.isEmpty ? .stderr : .stdout
-        onExpandLog(LogModalSelection(vm: vm, stream: stream))
+        // Pick stderr only when it has REAL content (placeholders are non-empty,
+        // so `!stderr.isEmpty` always picked stderr and stdout was unreachable).
+        let stream: LogStream = vm.stderrHasContent ? .stderr : .stdout
+        onExpandLog(LogModalSelection(vm: vm, stream: stream, jobId: vm.job.jobId))
     }
 
     private var header: some View {
@@ -280,6 +334,8 @@ struct JobDetailView: View {
                     }
                 Spacer()
                 Text(vm.job.state).font(.caption.bold()).foregroundColor(Theme.stateColor(vm.job.state))
+                    .contentTransition(.opacity)
+                    .motion(Motion.smooth, value: vm.job.state)
                 Button {
                     bookmarks.add(Bookmark(jobId: vm.job.jobId, label: vm.job.name))
                     actionMessage = "Bookmark gespeichert."
@@ -525,6 +581,7 @@ struct JobDetailView: View {
 
     private static let skeletonGpuStats: [GpuStat] = (0..<2).map { i in
         GpuStat(
+            slot: i,
             index: i,
             name: "NVIDIA A100-SXM4-40GB",
             utilizationPercent: 45,
@@ -759,7 +816,7 @@ struct JobDetailView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    onExpandLog(LogModalSelection(vm: vm, stream: stream))
+                    onExpandLog(LogModalSelection(vm: vm, stream: stream, jobId: vm.job.jobId))
                 }
                 .help("Log vergrössert öffnen (Leertaste)")
                 if let p = path {

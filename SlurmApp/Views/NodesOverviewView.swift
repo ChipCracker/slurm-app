@@ -12,6 +12,14 @@ struct NodesOverviewView: View {
     @State private var error: String?
     @State private var search = ""
     @State private var gpuOnly = false
+    /// GPU (count, type) resolved ONCE per node at load time. `ClusterNode.gpu`
+    /// parses the GRES string with a regex on every access; without this cache
+    /// the sort/filter ran that regex O(n log n) times on every keystroke.
+    @State private var gpuCache: [String: (count: Int, type: String?)] = [:]
+
+    private func gpu(_ node: ClusterNode) -> (count: Int, type: String?) {
+        gpuCache[node.name] ?? (0, nil)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,9 +73,9 @@ struct NodesOverviewView: View {
     // MARK: – Summary
 
     private var summaryBar: some View {
-        let gpuNodes = nodes.filter { $0.gpuCount > 0 }
-        let totalGpus = gpuNodes.reduce(0) { $0 + $1.gpuCount }
-        let types = Set(gpuNodes.compactMap { $0.gpu.type?.uppercased() }).sorted()
+        let gpuNodes = nodes.filter { gpu($0).count > 0 }
+        let totalGpus = gpuNodes.reduce(0) { $0 + gpu($1).count }
+        let types = Set(gpuNodes.compactMap { gpu($0).type?.uppercased() }).sorted()
         return HStack(spacing: 18) {
             stat("\(nodes.count)", "Knoten")
             stat("\(gpuNodes.count)", "mit GPU")
@@ -146,7 +154,7 @@ struct NodesOverviewView: View {
     }
 
     private func row(_ node: ClusterNode) -> some View {
-        let gpu = node.gpu
+        let gpu = gpu(node)
         return HStack(spacing: 12) {
             Circle().fill(stateColor(stateBucket(node.state))).frame(width: 9, height: 9)
             Text(node.name)
@@ -193,16 +201,18 @@ struct NodesOverviewView: View {
 
     private var filtered: [ClusterNode] {
         var list = nodes
-        if gpuOnly { list = list.filter { $0.gpuCount > 0 } }
+        if gpuOnly { list = list.filter { gpu($0).count > 0 } }
         if !search.isEmpty {
             list = list.filter {
                 $0.name.localizedCaseInsensitiveContains(search) ||
                 $0.partitions.contains { $0.localizedCaseInsensitiveContains(search) }
             }
         }
-        // GPU nodes first (most GPUs on top), then the rest by name.
+        // GPU nodes first (most GPUs on top), then the rest by name. Reads the
+        // cached count — no regex in the comparator.
         return list.sorted {
-            if $0.gpuCount != $1.gpuCount { return $0.gpuCount > $1.gpuCount }
+            let g0 = gpu($0).count, g1 = gpu($1).count
+            if g0 != g1 { return g0 > g1 }
             return $0.name < $1.name
         }
     }
@@ -235,7 +245,13 @@ struct NodesOverviewView: View {
         loading = true
         defer { loading = false }
         do {
-            nodes = try await slurm.fetchAllNodes()
+            let fetched = try await slurm.fetchAllNodes()
+            // Resolve each node's GPU once here (regex), then serve from the
+            // cache in the hot filter/sort paths.
+            var cache: [String: (count: Int, type: String?)] = [:]
+            for n in fetched { let g = n.gpu; cache[n.name] = (g.count, g.type) }
+            nodes = fetched
+            gpuCache = cache
             error = nil
         } catch {
             self.error = error.localizedDescription

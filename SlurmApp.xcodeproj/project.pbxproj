@@ -17,6 +17,8 @@
 		1F109DE28F13D667C706B389 /* SlurmModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E65E65EDAF29D80348B2FF69 /* SlurmModels.swift */; };
 		23B42FEA33EA278A3F13BB73 /* sinfo.txt in Resources */ = {isa = PBXBuildFile; fileRef = 0E969AE0F596DBA91E9BE890 /* sinfo.txt */; };
 		247FBE9DA72559E3C27351D7 /* squeue.txt in Resources */ = {isa = PBXBuildFile; fileRef = 06E47AC18BC02560AFE6AA0E /* squeue.txt */; };
+		2710FC0EF83113DA52E16719 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8ABA7794D9510B6B395D870 /* Motion.swift */; };
+		34FD544306609E2145BDC370 /* SettingsCustomColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F4A4D2AF6A4EE702335C2D3 /* SettingsCustomColors.swift */; };
 		36BDEA2F85C81B618E2818EA /* PartitionSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFD8F775C46E7DB6D181C22C /* PartitionSheetView.swift */; };
 		3A01F49F28A78D8DD148D758 /* scontrol_job.txt in Resources */ = {isa = PBXBuildFile; fileRef = 0289D29EAEB6D36094500908 /* scontrol_job.txt */; };
 		3C527BAA50603DE3D91346B9 /* DashboardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788C09E456481ABBB363028A /* DashboardModel.swift */; };
@@ -27,11 +29,13 @@
 		4C2F4927130FD96E5E3F6332 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 479B6FEF93D46A09D504213C /* AppState.swift */; };
 		4DA9F6B7334B944B186DC0AB /* SlurmParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC05235D97AC4236D3E23E15 /* SlurmParserTests.swift */; };
 		5261D7F882B957556078B80F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 513A4EB5A7962023327A4191 /* Assets.xcassets */; };
+		53B311B73389A301C3D8AB73 /* ThemeOverrides.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1295F23A666B86D3C130E013 /* ThemeOverrides.swift */; };
 		59F7C0D74A47FBC8F5FA2B92 /* JobDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A78988BC7B066680B7189C85 /* JobDetailView.swift */; };
 		5C657E55A4FB1D7A280ECB88 /* CopyableText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0402E596C060AB8DDC7F36E3 /* CopyableText.swift */; };
 		5C87C516DE5BE0DC3868ED74 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E1476501CA9B7783E8B302 /* SettingsView.swift */; };
 		62DD26C839B3EB4911A9DCD2 /* GpuHoursSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C89B22B083D0558AD07BD15D /* GpuHoursSheetView.swift */; };
 		6437DE9DE7FF008D1B4E22DE /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = AF7B2E9106E8FF8BF5E4FD2B /* Inject */; };
+		71B6423F9DB056B04D8D5A6F /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141846DA189E2932E42F689F /* Logging.swift */; };
 		78866E6BD9301973BE795FA9 /* DashboardGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EA2FE1A34AA102C904683EA /* DashboardGridView.swift */; };
 		7B0D440CC88B440C009C9EAC /* SlurmApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2BB20BCA3CEE443C032939 /* SlurmApp.swift */; };
 		7C7D88BCC1381A201D5D531E /* BookmarksStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02598092AE6B989F00CB5C80 /* BookmarksStore.swift */; };
@@ -44,6 +48,7 @@
 		9E1DB645653D057DC20E5DAE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29EB966D7A1276D0A26C8A45 /* Theme.swift */; };
 		9F95DDE08A4DE101CF6F7015 /* SSHClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0E09345FBAB5547D4BC59C /* SSHClient.swift */; };
 		A727E07574C634ACD88CD898 /* SlurmService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 315763A8A738FF81A9A4ED8E /* SlurmService.swift */; };
+		A88CC5E82CB3DAD05E92EA82 /* ThemePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA310EA63D4184548BEC0693 /* ThemePalette.swift */; };
 		A9B68E37D2118B2CFC2007A3 /* Shout in Frameworks */ = {isa = PBXBuildFile; productRef = 95C338561B86961D553AD5C1 /* Shout */; };
 		AA8A3F3C79248A160A3CBCFF /* ConnectionSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11288CD172B20E4A5808F15F /* ConnectionSetupView.swift */; };
 		AB72812E76C19B189FED798E /* Credentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E2959B3C7F172E3B6E5045 /* Credentials.swift */; };
@@ -79,7 +84,9 @@
 		0D0D208C24D92672632AB78E /* sinfo_gres.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = sinfo_gres.txt; sourceTree = "<group>"; };
 		0E969AE0F596DBA91E9BE890 /* sinfo.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = sinfo.txt; sourceTree = "<group>"; };
 		11288CD172B20E4A5808F15F /* ConnectionSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSetupView.swift; sourceTree = "<group>"; };
+		1295F23A666B86D3C130E013 /* ThemeOverrides.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeOverrides.swift; sourceTree = "<group>"; };
 		12C29381737B77AFDE8DD5DB /* SlurmApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SlurmApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		141846DA189E2932E42F689F /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
 		27C7AE1DCC53EC7AE1EEF3E2 /* BatchActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchActions.swift; sourceTree = "<group>"; };
 		29EB966D7A1276D0A26C8A45 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		3022A5D1A8A21A70C4F87B37 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -95,6 +102,7 @@
 		50FB69DC14A28FCED4003D32 /* HotReload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotReload.swift; sourceTree = "<group>"; };
 		513A4EB5A7962023327A4191 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5EA2FE1A34AA102C904683EA /* DashboardGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardGridView.swift; sourceTree = "<group>"; };
+		6F4A4D2AF6A4EE702335C2D3 /* SettingsCustomColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCustomColors.swift; sourceTree = "<group>"; };
 		770F754A53EC779E6E49E511 /* PaneResizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneResizer.swift; sourceTree = "<group>"; };
 		788C09E456481ABBB363028A /* DashboardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardModel.swift; sourceTree = "<group>"; };
 		8DF97191D1DEF8C8FF9BF40B /* SlurmParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlurmParser.swift; sourceTree = "<group>"; };
@@ -104,6 +112,7 @@
 		A1A1C661C0E5CE3169365AB1 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		A77FD365D69F0DC3AFD5E330 /* DashboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardStore.swift; sourceTree = "<group>"; };
 		A78988BC7B066680B7189C85 /* JobDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobDetailView.swift; sourceTree = "<group>"; };
+		A8ABA7794D9510B6B395D870 /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		AC2BB20BCA3CEE443C032939 /* SlurmApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlurmApp.swift; sourceTree = "<group>"; };
 		ACEAF9C5EE5B97ECE2F7451F /* KeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcuts.swift; sourceTree = "<group>"; };
 		ADA0CF584C20826604E3061B /* SSHKeyLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyLoader.swift; sourceTree = "<group>"; };
@@ -121,6 +130,7 @@
 		E4E5E469CBF8922B2B25380B /* SubmitJobView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubmitJobView.swift; sourceTree = "<group>"; };
 		E4F79C0092B0513D89F701FD /* ResizableSplits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResizableSplits.swift; sourceTree = "<group>"; };
 		E65E65EDAF29D80348B2FF69 /* SlurmModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlurmModels.swift; sourceTree = "<group>"; };
+		EA310EA63D4184548BEC0693 /* ThemePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePalette.swift; sourceTree = "<group>"; };
 		EAAEF7A8DA55A450256F0E70 /* Shout */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Shout; path = Vendor/Shout; sourceTree = SOURCE_ROOT; };
 		EC0E09345FBAB5547D4BC59C /* SSHClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHClient.swift; sourceTree = "<group>"; };
 		EDFFCCB20DDF14B4BE3F004B /* ReadOnlyGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadOnlyGuardTests.swift; sourceTree = "<group>"; };
@@ -146,6 +156,7 @@
 				02598092AE6B989F00CB5C80 /* BookmarksStore.swift */,
 				ACEAF9C5EE5B97ECE2F7451F /* KeyboardShortcuts.swift */,
 				FDCCBCAAFE3D297D205F68F6 /* KeychainStore.swift */,
+				141846DA189E2932E42F689F /* Logging.swift */,
 				8DF97191D1DEF8C8FF9BF40B /* SlurmParser.swift */,
 				315763A8A738FF81A9A4ED8E /* SlurmService.swift */,
 				EC0E09345FBAB5547D4BC59C /* SSHClient.swift */,
@@ -159,8 +170,11 @@
 			isa = PBXGroup;
 			children = (
 				50FB69DC14A28FCED4003D32 /* HotReload.swift */,
+				A8ABA7794D9510B6B395D870 /* Motion.swift */,
 				9C33F0A88015061E1ADE2DCA /* PlatformExtensions.swift */,
 				29EB966D7A1276D0A26C8A45 /* Theme.swift */,
+				1295F23A666B86D3C130E013 /* ThemeOverrides.swift */,
+				EA310EA63D4184548BEC0693 /* ThemePalette.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -286,6 +300,7 @@
 				CFD8F775C46E7DB6D181C22C /* PartitionSheetView.swift */,
 				E4F79C0092B0513D89F701FD /* ResizableSplits.swift */,
 				3022A5D1A8A21A70C4F87B37 /* RootView.swift */,
+				6F4A4D2AF6A4EE702335C2D3 /* SettingsCustomColors.swift */,
 				B3E1476501CA9B7783E8B302 /* SettingsView.swift */,
 				30A53C97E07F71536A24A2F7 /* Shimmer.swift */,
 				9B0EB8DCC7481889B20866DE /* SlurmyComponents.swift */,
@@ -440,7 +455,9 @@
 				3EC6E33948C47827AA7BEB2A /* JobsView.swift in Sources */,
 				D9814140A6FB7E271C4B729F /* KeyboardShortcuts.swift in Sources */,
 				B05DE126716F4AE8711608B4 /* KeychainStore.swift in Sources */,
+				71B6423F9DB056B04D8D5A6F /* Logging.swift in Sources */,
 				902DA43E6CA1AC14CAAD5D2F /* MainTabView.swift in Sources */,
+				2710FC0EF83113DA52E16719 /* Motion.swift in Sources */,
 				D58C993267D1F45AA6B04094 /* NodesOverviewView.swift in Sources */,
 				41E57757202CBE74ABB8A334 /* PaneResizer.swift in Sources */,
 				4247C918A59CF93F8F3213A0 /* PartitionDetailsCard.swift in Sources */,
@@ -450,6 +467,7 @@
 				FB8C5FA945576061C3825E87 /* RootView.swift in Sources */,
 				9F95DDE08A4DE101CF6F7015 /* SSHClient.swift in Sources */,
 				0156282C24C16314C5193732 /* SSHKeyLoader.swift in Sources */,
+				34FD544306609E2145BDC370 /* SettingsCustomColors.swift in Sources */,
 				5C87C516DE5BE0DC3868ED74 /* SettingsView.swift in Sources */,
 				0C78B1DD70F65A98DEE5C8BC /* Shimmer.swift in Sources */,
 				7B0D440CC88B440C009C9EAC /* SlurmApp.swift in Sources */,
@@ -460,6 +478,8 @@
 				0DF02FC308926D24FD10A079 /* SubmitJobView.swift in Sources */,
 				04BAC85AE12D218E1814BCD7 /* TerminalLauncher.swift in Sources */,
 				9E1DB645653D057DC20E5DAE /* Theme.swift in Sources */,
+				53B311B73389A301C3D8AB73 /* ThemeOverrides.swift in Sources */,
+				A88CC5E82CB3DAD05E92EA82 /* ThemePalette.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

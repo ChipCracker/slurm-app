@@ -24,7 +24,10 @@ struct SettingsView: View {
 
     @AppStorage("appearance") private var appearanceRaw: String = AppAppearance.system.rawValue
     @AppStorage(AppTheme.storageKey) private var accentThemeRaw: String = AppTheme.default.rawValue
+    @AppStorage(AppColorTheme.storageKey) private var colorThemeRaw: String = AppColorTheme.default.rawValue
     @AppStorage("textSizeIndex") private var textSizeIndex: Int = 3
+
+    private var activeColorTheme: AppColorTheme { AppColorTheme(rawValue: colorThemeRaw) ?? .default }
 
     private let textSizeNames = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"]
     private let defaultTextSizeIndex = 3
@@ -37,7 +40,11 @@ struct SettingsView: View {
                     VStack(spacing: 16) {
                         brandingHeader
                         appearanceCard
-                        themeCard
+                        colorThemeCard
+                        if activeColorTheme.allowsAccentOverride {
+                            themeCard
+                        }
+                        CustomColorsCard()
                         jobsListCard
                         if dashboardAvailable {
                             dashboardCard
@@ -93,7 +100,8 @@ struct SettingsView: View {
     // MARK: – Appearance
 
     private var appearanceCard: some View {
-        SettingsSection(title: "Darstellung", systemImage: "paintbrush") {
+        let locked = activeColorTheme.forcedColorScheme != nil
+        return SettingsSection(title: "Darstellung", systemImage: "paintbrush") {
             Picker("Erscheinungsbild", selection: $appearanceRaw) {
                 ForEach(AppAppearance.allCases) { mode in
                     Label(mode.label, systemImage: mode.symbol).tag(mode.rawValue)
@@ -101,9 +109,71 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text("Automatisch folgt dem System (Hell/Dunkel).")
+            .disabled(locked)
+            Text(locked
+                 ? "Das Thema „\(activeColorTheme.label)“ gibt das Erscheinungsbild fest vor."
+                 : "Automatisch folgt dem System (Hell/Dunkel).")
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    /// Full theme picker — live-preview swatch tiles rendered from each theme's
+    /// own palette (background, card, accent, status dots).
+    private var colorThemeCard: some View {
+        SettingsSection(title: "Thema", systemImage: "swatchpalette") {
+            let columns = [GridItem(.adaptive(minimum: 104), spacing: 12)]
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(AppColorTheme.allCases) { theme in
+                    let selected = theme.rawValue == colorThemeRaw
+                    Button {
+                        withAnimation(.smooth(duration: 0.35)) { colorThemeRaw = theme.rawValue }
+                    } label: {
+                        themeSwatch(theme, selected: selected)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Text("Wechselt die komplette Farbpalette (Hintergrund, Karten, Akzent, Statusfarben). Eigene Akzentfarbe nur im Thema „Slurmy“.")
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    private func themeSwatch(_ theme: AppColorTheme, selected: Bool) -> some View {
+        let p = theme.palette
+        let accent = theme.allowsAccentOverride ? AppTheme.current.accent : p.accent
+        return VStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(p.background)
+                VStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(p.surface)
+                        .frame(height: 16)
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(accent).frame(width: 22, height: 5).padding(.leading, 5)
+                        }
+                    HStack(spacing: 4) {
+                        Circle().fill(p.success).frame(width: 7, height: 7)
+                        Circle().fill(p.warning).frame(width: 7, height: 7)
+                        Circle().fill(p.danger).frame(width: 7, height: 7)
+                        Circle().fill(p.cyan).frame(width: 7, height: 7)
+                        Spacer()
+                    }
+                }
+                .padding(7)
+            }
+            .frame(height: 56)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(selected ? accent : Theme.border, lineWidth: selected ? 2 : 1)
+            )
+            HStack(spacing: 4) {
+                if selected { Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundColor(Theme.accent) }
+                Text(theme.label)
+                    .font(.caption2.weight(selected ? .bold : .regular))
+                    .foregroundColor(selected ? Theme.textPrimary : Theme.textSecondary)
+            }
         }
     }
 
@@ -317,6 +387,7 @@ struct SettingsView: View {
         switch appState.connectionStatus {
         case .connected:    return Theme.success
         case .connecting:   return Theme.warning
+        case .degraded:     return Theme.warning
         case .failed:       return Theme.danger
         case .disconnected: return Theme.textSecondary
         }

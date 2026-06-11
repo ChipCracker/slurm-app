@@ -68,6 +68,16 @@ final class SlurmParserTests: XCTestCase {
         XCTAssertEqual(parts.first?.totalGpus, 0)
     }
 
+    func testParsePartitionGres_MultiNodeSumsTotal() {
+        // 4 nodes each gpu:a100:8 in p1 → partition total 32 (per-node summed),
+        // NOT the per-node count of 8. One aggregated entry, no duplicate ids.
+        let text = "p1|gpu:a100:8\np1|gpu:a100:8\np1|gpu:a100:8\np1|gpu:a100:8"
+        let parts = SlurmParser.parsePartitionGres(text)
+        XCTAssertEqual(parts.count, 1)
+        XCTAssertEqual(parts[0].totalGpus, 32)
+        XCTAssertEqual(parts[0].gpuType, "a100")
+    }
+
     // MARK: – scontrol
 
     func testParseScontrol_JobFixture() throws {
@@ -109,6 +119,25 @@ final class SlurmParserTests: XCTestCase {
         XCTAssertEqual(stats.count, 1)
         XCTAssertEqual(stats[0].powerDrawW, 0)
         XCTAssertEqual(stats[0].powerLimitW, 0)
+    }
+
+    func testParseNvidiaSmi_MultiNodeKeepsUniqueIds() {
+        // Two nodes each report index 0 and 1 → ids must stay unique (slot).
+        let csv = "0,A,1,1,2,3,4,5\n1,A,1,1,2,3,4,5\n0,A,1,1,2,3,4,5\n1,A,1,1,2,3,4,5"
+        let stats = SlurmParser.parseNvidiaSmi(csv)
+        XCTAssertEqual(stats.count, 4)
+        XCTAssertEqual(Set(stats.map(\.id)).count, 4)
+    }
+
+    func testParseScontrol_PreservesValuesWithSpaces() {
+        // Command with arguments and a multi-word JobName must survive (the old
+        // space-split truncated them at the first space).
+        let text = "JobId=42 JobName=my long name Command=/path/run.sh arg1 arg2 Partition=p1"
+        let d = SlurmParser.parseScontrolKeyValue(text)
+        XCTAssertEqual(d["JobName"], "my long name")
+        XCTAssertEqual(d["Command"], "/path/run.sh arg1 arg2")
+        XCTAssertEqual(d["Partition"], "p1")
+        XCTAssertEqual(d["JobId"], "42")
     }
 
     func testParsePartitionNodes() {

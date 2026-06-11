@@ -15,7 +15,26 @@ struct SlurmApp: App {
     /// Selected accent palette. Read here so the whole content tree re-renders
     /// (and `Theme.accent` re-resolves) the moment the user picks a new theme.
     @AppStorage(AppTheme.storageKey) private var accentThemeRaw: String = AppTheme.default.rawValue
-    private var accentColor: Color { (AppTheme(rawValue: accentThemeRaw) ?? .default).accent }
+    /// Full colour theme. Reading it here is load-bearing: it forces the tree
+    /// re-render on a theme switch so the computed `Theme.*` statics re-resolve.
+    @AppStorage(AppColorTheme.storageKey) private var colorThemeRaw: String = AppColorTheme.default.rawValue
+    /// Bumped whenever a custom colour override changes — reading it here forces
+    /// the tree to re-render so the computed `Theme.*` statics pick up overrides.
+    @AppStorage(ThemeOverrideStore.revisionKey) private var themeOverrideRevision: Int = 0
+    private var colorTheme: AppColorTheme { AppColorTheme(rawValue: colorThemeRaw) ?? .default }
+    /// A custom accent override wins; else the standard theme uses the chosen
+    /// accent and opinionated themes their own.
+    private var accentColor: Color {
+        if let c = ThemeOverrideStore.shared.color(for: .accent) { return c }
+        return colorTheme.allowsAccentOverride
+            ? (AppTheme(rawValue: accentThemeRaw) ?? .default).accent
+            : colorTheme.palette.accent
+    }
+    /// A theme may pin an appearance (Terminal → dark); otherwise the user's
+    /// appearance preference wins.
+    private var effectiveColorScheme: ColorScheme? {
+        colorTheme.forcedColorScheme ?? appearance.colorScheme
+    }
 
     private let sizes: [DynamicTypeSize] =
         [.xSmall, .small, .medium, .large, .xLarge, .xxLarge, .xxxLarge]
@@ -36,7 +55,7 @@ struct SlurmApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
-                .preferredColorScheme(appearance.colorScheme)
+                .preferredColorScheme(effectiveColorScheme)
                 .tint(accentColor)
                 // Nur überschreiben, wenn der Nutzer per ⌘+/⌘- abgewichen ist —
                 // sonst die System-Textgröße (iOS Dynamic Type) durchlassen.

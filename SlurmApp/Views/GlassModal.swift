@@ -44,11 +44,7 @@ struct GlassPanel<Content: View>: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [
-                    Theme.accent.opacity(0.20),
-                    Theme.purple.opacity(0.12),
-                    Theme.background.opacity(0.4),
-                ],
+                colors: Theme.glassGradient,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )

@@ -23,14 +23,25 @@ final class BookmarksStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: url),
-              let list = try? JSONDecoder().decode([Bookmark].self, from: data) else { return }
-        bookmarks = list
+        // No file yet on first launch is normal — don't log that. A file that
+        // exists but won't decode is corruption: surface it instead of silently
+        // starting empty (which would then overwrite the file on the next save
+        // and lose everything).
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            bookmarks = try JSONDecoder().decode([Bookmark].self, from: data)
+        } catch {
+            Log.store.error("Lesezeichen konnten nicht geladen werden: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(bookmarks) {
-            try? data.write(to: url, options: .atomic)
+        do {
+            let data = try JSONEncoder().encode(bookmarks)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            Log.store.error("Lesezeichen konnten nicht gespeichert werden: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

@@ -7,6 +7,7 @@ enum SSHError: LocalizedError {
     case authenticationFailed(String)
     case connectionFailed(String)
     case unsupportedAuthMethod
+    case hostKeyMismatch(expected: String, actual: String)
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,11 @@ enum SSHError: LocalizedError {
             return "Verbindung fehlgeschlagen: \(detail)"
         case .unsupportedAuthMethod:
             return "Auth-Methode wird nicht unterstützt."
+        case .hostKeyMismatch(let expected, let actual):
+            return "Host-Key stimmt nicht überein – mögliche Man-in-the-Middle-Attacke. "
+                 + "Verbindung aus Sicherheitsgründen abgebrochen.\n"
+                 + "Erwartet: \(SSHClient.shortFingerprint(expected))\n"
+                 + "Erhalten: \(SSHClient.shortFingerprint(actual))"
         }
     }
 }
@@ -35,16 +41,23 @@ final class SSHClient: @unchecked Sendable {
     // (sleep/wake, idle-timeout, network change), so it is mutable but only
     // ever touched from `queue`.
     private var session: SSH
-    private let creds: Credentials
+    // Mutable so the host-key fingerprint can be pinned after the first connect
+    // (trust-on-first-use); only mutated via `pinFingerprint` before any
+    // reconnect can run, then read-only on `queue`.
+    private var creds: Credentials
     private let queue: DispatchQueue
     let host: String
     let username: String
+    /// SHA-256 host-key fingerprint observed on the live connection. The caller
+    /// pins this into the stored credentials on first connect.
+    let connectedFingerprint: String?
 
     private init(session: SSH, creds: Credentials) {
         self.session = session
         self.creds = creds
         self.host = creds.host
         self.username = creds.username
+        self.connectedFingerprint = session.hostKeyFingerprintSHA256
         self.queue = DispatchQueue(label: "slurmios.ssh.\(creds.username)@\(creds.host)", qos: .userInitiated)
     }
 
@@ -61,18 +74,42 @@ final class SSHClient: @unchecked Sendable {
         }
     }
 
+    /// Pin the host-key fingerprint into this client's credentials so subsequent
+    /// reconnects within the same session also verify it. Called once by AppState
+    /// after trust-on-first-use, before any reconnect can happen.
+    func pinFingerprint(_ fingerprint: String) {
+        queue.async { [self] in creds.hostFingerprint = fingerprint }
+    }
+
+    /// First 16 hex chars of a fingerprint for compact display in errors/UI.
+    static func shortFingerprint(_ fp: String) -> String {
+        fp.isEmpty ? "—" : "SHA256:" + String(fp.prefix(16)) + "…"
+    }
+
     /// Open a fresh, authenticated libssh2 session for `creds`. Used both for
     /// the initial connect and for transparent reconnects after a dropped link.
+    /// Verifies the server host key against the pinned fingerprint (TOFU) and
+    /// hard-fails on a mismatch — closing the silent re-auth-against-impostor
+    /// hole on every reconnect path.
     private static func makeSession(_ creds: Credentials) throws -> SSH {
         let session: SSH
         do {
-            session = try SSH(host: creds.host, port: Int32(creds.port))
-            // Abort a stalled blocking call after 45s (LIBSSH2_ERROR_TIMEOUT)
-            // instead of hanging the serial SSH queue forever — generous enough
-            // for slow reads like sreport, but recovers from a dead network link.
-            session.timeout = 45_000
+            // Pass the 45s timeout into the initializer so it also bounds the TCP
+            // connect and the libssh2 handshake (otherwise both wait forever and
+            // a dead link hangs the serial SSH queue). Generous enough for slow
+            // reads like sreport, but recovers from a black-holing network.
+            session = try SSH(host: creds.host, port: Int32(creds.port), timeout: 45_000)
         } catch {
             throw SSHError.connectionFailed(error.localizedDescription)
+        }
+        // Host-key verification: once a fingerprint is pinned, a different key
+        // means the endpoint changed (re-provisioned host — or an attacker).
+        // Refuse before any credential/command is sent.
+        if let expected = creds.hostFingerprint, !expected.isEmpty {
+            let actual = session.hostKeyFingerprintSHA256 ?? ""
+            guard actual == expected else {
+                throw SSHError.hostKeyMismatch(expected: expected, actual: actual)
+            }
         }
         do {
             switch creds.authMethod {
@@ -140,18 +177,21 @@ final class SSHClient: @unchecked Sendable {
     private func captureWithReconnect(_ command: String) throws -> String {
         let status: Int32
         let output: String
+        let errOutput: String
         do {
-            (status, output) = try session.capture(command)
+            (status, output, errOutput) = try session.captureWithError(command)
         } catch {
             // Only a *session/channel* failure lands here (a non-zero command
             // exit comes back as `status`, not a throw). Treat it as a dead
-            // link: reconnect (may throw if the host is truly unreachable) and
-            // retry exactly once.
+            // link: reconnect (may throw if the host is truly unreachable, or
+            // SSHError.hostKeyMismatch if the key changed) and retry once.
             session = try SSHClient.makeSession(creds)
-            (status, output) = try session.capture(command)
+            (status, output, errOutput) = try session.captureWithError(command)
         }
         if status != 0 && output.isEmpty {
-            throw SSHError.commandFailed("(empty)", status)
+            // Surface the real stderr diagnostic instead of a blank "(empty)".
+            let err = errOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw SSHError.commandFailed(err.isEmpty ? "(empty)" : err, status)
         }
         return output
     }
@@ -183,12 +223,17 @@ final class SSHClient: @unchecked Sendable {
 /// Whitelist of safe (read-only) command prefixes. Mutating actions must use
 /// `executeWrite` explicitly.
 enum ReadOnlyGuard {
+    // NOTE: awk and sed are deliberately NOT here — both can execute arbitrary
+    // commands (awk system()/"cmd"|getline, GNU sed `e`/`w`) and write files, so
+    // they are not "read-only" primitives. `sort` stays but its file-writing
+    // `-o` flag is rejected below. The app never builds awk/sed programs from
+    // input, so nothing legitimate is lost.
     static let safePrefixes: [String] = [
         "echo", "hostname", "whoami",
         "cat", "tail", "head", "ls", "stat", "wc",
-        "grep", "awk", "sort", "uniq", "tr", "cut", "sed",
+        "grep", "sort", "uniq", "tr", "cut",
         "true", "false",
-        "squeue", "sinfo", "sacct", "sreport",
+        "squeue", "sinfo", "sacct", "sstat", "sreport",
         "sacctmgr show",
         "scontrol show",
         "scontrol write batch_script",
@@ -200,10 +245,19 @@ enum ReadOnlyGuard {
     static func isSafe(_ command: String) -> Bool {
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         if containsRedirection(trimmed) { return false }
+        // Command substitution defeats the whole prefix check — a whitelisted
+        // leading token can embed an arbitrary mutating command via $(…) or
+        // backticks. Reject both (outside quotes).
+        if containsCommandSubstitution(trimmed) { return false }
         let segments = splitPipeline(trimmed)
+        guard !segments.isEmpty else { return false }
         return segments.allSatisfy { seg in
             let s = seg.trimmingCharacters(in: .whitespacesAndNewlines)
-            return safePrefixes.contains { matchWordPrefix(s, prefix: $0) }
+            guard !s.isEmpty else { return false }
+            guard safePrefixes.contains(where: { matchWordPrefix(s, prefix: $0) }) else { return false }
+            // `sort -o FILE` / `sort --output=FILE` writes an arbitrary file.
+            if matchWordPrefix(s, prefix: "sort") && mentionsSortOutput(s) { return false }
+            return true
         }
     }
 
@@ -233,6 +287,37 @@ enum ReadOnlyGuard {
         return false
     }
 
+    /// True if the command contains `$(`, `${` or a backtick outside quotes —
+    /// all of which can run an embedded command the prefix check never sees.
+    /// (`${` is parameter expansion, not execution, but it can still smuggle
+    /// values into a command and isn't needed by any read path, so reject it.)
+    private static func containsCommandSubstitution(_ command: String) -> Bool {
+        var inSingle = false, inDouble = false
+        let chars = Array(command)
+        var i = 0
+        while i < chars.count {
+            let ch = chars[i]
+            if ch == "'" && !inDouble { inSingle.toggle() }
+            else if ch == "\"" && !inSingle { inDouble.toggle() }
+            // `$(…)` survives inside double quotes in a real shell, so only a
+            // single-quoted region is treated as inert here.
+            if !inSingle {
+                if ch == "`" { return true }
+                if ch == "$", i + 1 < chars.count, chars[i + 1] == "(" || chars[i + 1] == "{" {
+                    return true
+                }
+            }
+            i += 1
+        }
+        return false
+    }
+
+    /// True if a `sort` segment uses its file-writing output flag.
+    private static func mentionsSortOutput(_ segment: String) -> Bool {
+        let tokens = segment.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        return tokens.contains { $0 == "-o" || $0.hasPrefix("-o") || $0.hasPrefix("--output") }
+    }
+
     private static func splitPipeline(_ command: String) -> [String] {
         var parts: [String] = []
         var current = ""
@@ -243,11 +328,19 @@ enum ReadOnlyGuard {
             if ch == "'" && !inDouble { inSingle.toggle() }
             else if ch == "\"" && !inSingle { inDouble.toggle() }
             if !inSingle && !inDouble {
-                if ch == "|" || ch == ";" {
+                // Newline and ';' and '|' all separate commands in the remote
+                // shell — splitting on them stops a whitelisted leading token
+                // from carrying a hidden mutating command on the next line.
+                if ch == "|" || ch == ";" || ch == "\n" || ch == "\r" {
                     parts.append(current); current = ""; i = command.index(after: i); continue
                 }
-                if ch == "&", command.index(after: i) < command.endIndex, command[command.index(after: i)] == "&" {
-                    parts.append(current); current = ""; i = command.index(i, offsetBy: 2); continue
+                if ch == "&" {
+                    // Both `&&` and a single backgrounding `&` separate commands.
+                    let next = command.index(after: i)
+                    if next < command.endIndex && command[next] == "&" {
+                        parts.append(current); current = ""; i = command.index(i, offsetBy: 2); continue
+                    }
+                    parts.append(current); current = ""; i = command.index(after: i); continue
                 }
             }
             current.append(ch)

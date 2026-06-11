@@ -17,7 +17,9 @@ struct PartitionSheetView: View {
     @State private var expanded: Set<String> = []
     /// Cached per-node `scontrol show node` key/values.
     @State private var nodeDetails: [String: [String: String]] = [:]
-    @State private var loadingNode: String? = nil
+    // Set, not a single slot: expanding two nodes quickly used to clobber each
+    // other's spinner (the first's defer cleared the shared flag).
+    @State private var loadingNodes: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -282,8 +284,8 @@ struct PartitionSheetView: View {
 
     private func fetchNode(_ name: String) async {
         guard let slurm = appState.slurm else { return }
-        loadingNode = name
-        defer { loadingNode = nil }
+        loadingNodes.insert(name)
+        defer { loadingNodes.remove(name) }
         if let d = try? await slurm.fetchNodeDetails(name) {
             nodeDetails[name] = d
         }
@@ -294,7 +296,7 @@ struct PartitionSheetView: View {
         let d = nodeDetails[node.name]
         VStack(alignment: .leading, spacing: 12) {
             Divider().background(Theme.hairline)
-            if d == nil && loadingNode == node.name {
+            if d == nil && loadingNodes.contains(node.name) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Lade scontrol show node…").font(.caption).foregroundStyle(.secondary)

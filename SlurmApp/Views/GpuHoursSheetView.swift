@@ -14,6 +14,15 @@ struct GpuHoursSheetView: View {
     @State private var loading: Bool = false
     @State private var error: String?
     @State private var search: String = ""
+    /// Bumped by the manual refresh button and "Anwenden" to force a reload;
+    /// part of the `.task(id:)` key so a new reload cancels the previous one
+    /// (no overlapping unstructured Tasks, no stale-result race).
+    @State private var reloadToken: Int = 0
+    @State private var forceNextReload: Bool = false
+
+    /// Re-runs `reload` whenever the period or the force-token changes. Custom
+    /// dates only take effect via "Anwenden" (which bumps the token).
+    private var reloadKey: String { "\(rangePreset.rawValue)#\(reloadToken)" }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,8 +33,14 @@ struct GpuHoursSheetView: View {
             content
         }
         .background(rangeShortcuts)
-        .task { await reload() }
-        .onChange(of: rangePreset) { _, _ in Task { await reload() } }
+        // `.task(id:)` cancels the in-flight reload when the key changes, so
+        // mashing the period picker can't leave overlapping reloads racing.
+        .task(id: reloadKey) { await reload() }
+    }
+
+    private func requestReload(force: Bool = true) {
+        forceNextReload = force
+        reloadToken += 1
     }
 
     /// `⌥←` and `⌥→` cycle through the segmented range picker.
@@ -66,7 +81,7 @@ struct GpuHoursSheetView: View {
                     .foregroundStyle(.primary)
             }
             Spacer()
-            Button(action: { Task { await reload() } }) {
+            Button(action: { requestReload() }) {
                 Image(systemName: loading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
                     .font(.title3)
                     .frame(width: 32, height: 32)
@@ -108,7 +123,7 @@ struct GpuHoursSheetView: View {
                 Text("–").foregroundStyle(.secondary)
                 DatePicker("", selection: $customEnd, displayedComponents: .date)
                     .labelsHidden()
-                Button("Anwenden") { Task { await reload() } }
+                Button("Anwenden") { requestReload() }
                     .buttonStyle(.borderedProminent)
             }
             Spacer()
@@ -133,7 +148,7 @@ struct GpuHoursSheetView: View {
                     .foregroundColor(Theme.danger)
                     .multilineTextAlignment(.center)
                     .textSelection(.enabled)
-                Button("Erneut versuchen") { Task { await reload() } }
+                Button("Erneut versuchen") { requestReload() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(24)
@@ -259,14 +274,33 @@ struct GpuHoursSheetView: View {
             error = "Keine SSH-Verbindung."
             return
         }
+        let (start, end) = currentRange
+        let key = rangePreset == .custom
+            ? "custom#\(Int(start.timeIntervalSince1970))#\(Int(end.timeIntervalSince1970))"
+            : rangePreset.rawValue
+        let force = forceNextReload
+        forceNextReload = false
+
+        // Serve a recent result (≤30 min) instead of re-running the heavy
+        // year-long sreport on every open, unless the user forced a refresh.
+        if !force, let cached = appState.cachedGpuHours(forKey: key, maxAge: 1800) {
+            entries = cached
+            error = nil
+            return
+        }
+
         loading = true
         defer { loading = false }
-        let (start, end) = currentRange
         do {
             let list = try await slurm.fetchGpuHours(start: start, end: end, topN: 0)
+            // `.task(id:)` cancels us when the period changes — don't let a
+            // late-returning fetch overwrite the newer selection's data.
+            if Task.isCancelled { return }
             self.entries = list
             self.error = nil
+            appState.storeGpuHours(list, forKey: key)
         } catch {
+            if Task.isCancelled { return }
             self.error = error.localizedDescription
             self.entries = []
         }

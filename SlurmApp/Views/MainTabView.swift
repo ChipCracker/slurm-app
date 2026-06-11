@@ -2,6 +2,8 @@ import SwiftUI
 
 extension Notification.Name {
     static let switchSection = Notification.Name("SlurmIOS.switchSection")
+    /// Posted with a job id (object: String) to jump to that job in the list.
+    static let openJob = Notification.Name("SlurmIOS.openJob")
 }
 
 enum MainSection: String, CaseIterable, Identifiable, Hashable {
@@ -180,6 +182,7 @@ private struct MacRootView: View {
         switch appState.connectionStatus {
         case .connected:    return Theme.success
         case .connecting:   return Theme.warning
+        case .degraded:     return Theme.warning
         case .failed:       return Theme.danger
         case .disconnected: return Theme.textSecondary
         }
