@@ -163,7 +163,7 @@ struct SettingsView: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .environment(\.insideGlassPanel, true)
-        .slurmyGlass(cornerRadius: 14, tint: Theme.glassTint)
+        .slurmyFrostCard(cornerRadius: 14)
         .fixedSize(horizontal: false, vertical: true)
     }
     #else
@@ -739,7 +739,9 @@ private struct SettingsSection<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .environment(\.insideGlassPanel, true)
-        .slurmyGlass(cornerRadius: 14, tint: Theme.glassTint)
+        // Element-Regel: Karten frosten IMMER — Liquid Glass gehört nur dem
+        // Gesamthintergrund dahinter (SlurmyPaneBackground).
+        .slurmyFrostCard(cornerRadius: 14)
     }
 }
 

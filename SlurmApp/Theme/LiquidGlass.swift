@@ -252,6 +252,44 @@ private struct SlurmyGlassCircleButtonModifier: ViewModifier {
     }
 }
 
+// MARK: – Frost für ELEMENTE (Karten, Tabellen): immer ruhig, nie durchsichtig
+//
+// Design-Regel: Liquid Glass gehört dem GESAMThintergrund (SlurmyPaneBackground)
+// und den schwebenden Modals — Element-Hintergründe bleiben IMMER gefrostet,
+// damit Inhalte bei jeder Glas-Intensität ruhig lesbar sind. Das Material
+// diffundiert den dahinterliegenden Fenster-Blur zu einer gleichmäßigen Fläche.
+
+extension View {
+    /// Karten-Chrome für Content-Elemente: ultraThinMaterial + Theme-Tönung +
+    /// Hairline. Unabhängig vom Glas-Schalter (auf opakem Fenster wirkt es wie
+    /// die bisherige Surface-Karte).
+    func slurmyFrostCard(cornerRadius: CGFloat = 14) -> some View {
+        self
+            .background(
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                    Theme.surface.opacity(0.55)
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Theme.hairline, lineWidth: 0.5)
+            )
+    }
+
+    /// Randlose Frost-Fläche für große Content-Blöcke (z. B. die Job-Tabelle):
+    /// verhindert, dass der Fenster-Blur durch Zeilen/Leerflächen bandet.
+    func slurmyFrostSurface() -> some View {
+        self.background(
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                Theme.background.opacity(0.45)
+            }
+        )
+    }
+}
+
 // MARK: – Transluzentes Fenster ("glossy"), wenn Liquid Glass aktiv ist
 
 extension View {

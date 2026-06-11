@@ -30,11 +30,11 @@ struct CustomColorsCard: View {
                 .font(.caption).foregroundColor(Theme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Glas-Chrome wie die SettingsSection-Karten (Frost-Fallback macht der
-        // Helfer); Controls darin de-glasen sich über das Environment-Flag.
+        // Frost-Chrome wie die SettingsSection-Karten: Elemente frosten immer,
+        // Liquid Glass gehört nur dem Gesamthintergrund.
         .environment(\.insideGlassPanel, true)
         .padding(16)
-        .slurmyGlass(cornerRadius: 14, tint: Theme.glassTint)
+        .slurmyFrostCard(cornerRadius: 14)
     }
 }
 

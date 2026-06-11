@@ -2332,7 +2332,10 @@ struct JobsView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .slurmyContentBackground()
+        // Element-Regel: Die Tabelle frostet IMMER — sonst banden die
+        // ungestreiften Zeilen + Leerfläche den Fenster-Blur mitten durch
+        // den Content. Liquid Glass bleibt dem Gesamthintergrund vorbehalten.
+        .slurmyFrostSurface()
         .focused($focusedPane, equals: .table)
         .focusable()
         .focusEffectDisabled()
