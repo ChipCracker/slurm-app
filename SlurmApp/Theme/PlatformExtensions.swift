@@ -10,20 +10,6 @@ extension View {
         #endif
     }
 
-    /// Färbt den Navigations-Bar-Hintergrund (iOS) passend zum dunklen Theme.
-    /// macOS hat keine Nav-Bar → no-op.
-    func navBarBackground(_ color: Color) -> some View {
-        #if os(iOS)
-        // No forced `.toolbarColorScheme(.dark)` — the bar (and its title text)
-        // follows the active appearance, so the nav bar stays legible in light
-        // mode instead of rendering white text on a light background.
-        self.toolbarBackground(color, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-        #else
-        self
-        #endif
-    }
-
     /// Numerische Tastatur (iOS) für Felder wie den Port.
     func numberInput() -> some View {
         #if os(iOS)

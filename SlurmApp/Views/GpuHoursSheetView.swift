@@ -81,25 +81,25 @@ struct GpuHoursSheetView: View {
                     .foregroundStyle(.primary)
             }
             Spacer()
-            Button(action: { requestReload() }) {
-                Image(systemName: loading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .disabled(loading)
-            .help("Aktualisieren")
+            SlurmyGlassButtonGroup {
+                Button(action: { requestReload() }) {
+                    Image(systemName: loading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .disabled(loading)
+                .help("Aktualisieren")
 
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .keyboardShortcut(.cancelAction)
+                .help("Schliessen (Esc)")
             }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .keyboardShortcut(.cancelAction)
-            .help("Schliessen (Esc)")
         }
         .padding(.horizontal, 24).padding(.vertical, 18)
     }
@@ -124,7 +124,7 @@ struct GpuHoursSheetView: View {
                 DatePicker("", selection: $customEnd, displayedComponents: .date)
                     .labelsHidden()
                 Button("Anwenden") { requestReload() }
-                    .buttonStyle(.borderedProminent)
+                    .slurmyGlassButton(prominent: true)
             }
             Spacer()
             TextField("Suche User", text: $search)
@@ -149,13 +149,12 @@ struct GpuHoursSheetView: View {
                     .multilineTextAlignment(.center)
                     .textSelection(.enabled)
                 Button("Erneut versuchen") { requestReload() }
+                    .slurmyGlassButton()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(24)
         } else if loading && entries.isEmpty {
-            ProgressView("Lade GPU-Hours…")
-                .tint(Theme.accent)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SlurmyLoadingState(caption: "Lade GPU-Hours…")
         } else if filtered.isEmpty {
             VStack(spacing: 8) {
                 Image(systemName: "tray").font(.largeTitle).foregroundStyle(.secondary)
@@ -208,8 +207,10 @@ struct GpuHoursSheetView: View {
                 .frame(width: 160, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
+                    // Opake Spur statt Material — winziges Content-Element,
+                    // kein Glas (und kein Glas-auf-Glas im Modal).
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(.thinMaterial)
+                        .fill(Theme.surfaceElevated)
                     RoundedRectangle(cornerRadius: 3)
                         .fill(isMe ? Theme.accent : Theme.success)
                         .frame(width: max(4, CGFloat(min(1, ratio)) * geo.size.width))

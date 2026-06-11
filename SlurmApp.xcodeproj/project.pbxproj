@@ -44,6 +44,7 @@
 		831F39CAE9BE6081FC0564DB /* sinfo_gres.txt in Resources */ = {isa = PBXBuildFile; fileRef = 0D0D208C24D92672632AB78E /* sinfo_gres.txt */; };
 		8DD8C7A459EAA65C52718994 /* GlassModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070121E4A1964FD6B7250A8 /* GlassModal.swift */; };
 		902DA43E6CA1AC14CAAD5D2F /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1C661C0E5CE3169365AB1 /* MainTabView.swift */; };
+		920D72128BB5E6CC1DE1253A /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD6E446F42A28C1DB5396329 /* LiquidGlass.swift */; };
 		94A088F08D6FE2CBF399CAB8 /* scontrol_partition.txt in Resources */ = {isa = PBXBuildFile; fileRef = BDFCF123293635C496E75BDF /* scontrol_partition.txt */; };
 		9E1DB645653D057DC20E5DAE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29EB966D7A1276D0A26C8A45 /* Theme.swift */; };
 		9F95DDE08A4DE101CF6F7015 /* SSHClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0E09345FBAB5547D4BC59C /* SSHClient.swift */; };
@@ -117,6 +118,7 @@
 		ACEAF9C5EE5B97ECE2F7451F /* KeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcuts.swift; sourceTree = "<group>"; };
 		ADA0CF584C20826604E3061B /* SSHKeyLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHKeyLoader.swift; sourceTree = "<group>"; };
 		B3E1476501CA9B7783E8B302 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		BD6E446F42A28C1DB5396329 /* LiquidGlass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlass.swift; sourceTree = "<group>"; };
 		BDE524887682B6F23D8227DD /* PartitionDetailsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartitionDetailsCard.swift; sourceTree = "<group>"; };
 		BDFCF123293635C496E75BDF /* scontrol_partition.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = scontrol_partition.txt; sourceTree = "<group>"; };
 		C0E1E655CC87985ABD907659 /* BookmarksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarksView.swift; sourceTree = "<group>"; };
@@ -170,6 +172,7 @@
 			isa = PBXGroup;
 			children = (
 				50FB69DC14A28FCED4003D32 /* HotReload.swift */,
+				BD6E446F42A28C1DB5396329 /* LiquidGlass.swift */,
 				A8ABA7794D9510B6B395D870 /* Motion.swift */,
 				9C33F0A88015061E1ADE2DCA /* PlatformExtensions.swift */,
 				29EB966D7A1276D0A26C8A45 /* Theme.swift */,
@@ -455,6 +458,7 @@
 				3EC6E33948C47827AA7BEB2A /* JobsView.swift in Sources */,
 				D9814140A6FB7E271C4B729F /* KeyboardShortcuts.swift in Sources */,
 				B05DE126716F4AE8711608B4 /* KeychainStore.swift in Sources */,
+				920D72128BB5E6CC1DE1253A /* LiquidGlass.swift in Sources */,
 				71B6423F9DB056B04D8D5A6F /* Logging.swift in Sources */,
 				902DA43E6CA1AC14CAAD5D2F /* MainTabView.swift in Sources */,
 				2710FC0EF83113DA52E16719 /* Motion.swift in Sources */,

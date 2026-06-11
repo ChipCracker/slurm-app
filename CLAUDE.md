@@ -140,6 +140,13 @@ user actions.
 - **Styling** goes through `Theme` (semantic colors, `stateColor`, `qosColor`,
   `utilizationColor`) and `GlassPanel` / `.glassModal(…)` for frosted overlays.
   Prefer these over ad-hoc colors/materials.
+- **Liquid Glass**: all glass rendering funnels through `Theme/LiquidGlass.swift`
+  (`.slurmyGlass(…)`, `.slurmyGlassButton(…)`, `SlurmyGlassButtonGroup`) —
+  native `glassEffect` on macOS 26+/iOS 26, legacy frost fallback on macOS 14/15
+  (every SDK-26 API needs `if #available(macOS 26.0, *)`). HIG discipline:
+  glass only on the floating layer (modals, overlays, header buttons), never on
+  content cards and never glass-on-glass (`GlassPanel` sets the
+  `insideGlassPanel` environment flag so nested controls de-glass themselves).
 - **Persistence**: Keychain (credentials), `~/Documents/bookmarks.json`
   (bookmarks), `@AppStorage`/UserDefaults (preferences like `appearance`,
   `accentTheme`, `textSizeIndex`, `inspectorOpen`).

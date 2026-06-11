@@ -292,6 +292,10 @@ struct GpuPartitionPill: View {
             Text("\(count) \(label)")
                 .font(.caption2)
                 .foregroundColor(Theme.textSecondary)
+                // Bei Platznot schrumpfen statt buchstabenweise umbrechen
+                // (bis zu 5 Chips müssen in schmale Inspector-Breiten passen).
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             if let symbol {
                 Image(systemName: symbol)
                     .font(.system(size: 7))

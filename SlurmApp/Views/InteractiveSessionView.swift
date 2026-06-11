@@ -30,7 +30,7 @@ struct InteractiveSessionView: View {
             }
             .navigationTitle("Interaktive Session")
             .inlineNavTitle()
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Schließen") { dismiss() }

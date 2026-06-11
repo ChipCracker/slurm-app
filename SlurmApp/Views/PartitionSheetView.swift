@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Big translucent "liquid glass" sheet for partition deep-dives.
-/// Uses macOS Materials (`.ultraThinMaterial`) layered over a colored
-/// gradient so the background of the host window subtly bleeds through —
-/// matches the Tahoe-style sheet aesthetic.
+/// Big "liquid glass" sheet for partition deep-dives. The glass itself comes
+/// from the presenting `GlassPanel` (native Liquid Glass on macOS 26+/iOS 26,
+/// legacy frost on macOS 14/15); the content inside stays on opaque
+/// `Theme.surface` cards — per HIG no glass-on-glass stacking.
 struct PartitionSheetView: View {
     let partition: String
     let usage: PartitionUsage?
@@ -38,8 +38,7 @@ struct PartitionSheetView: View {
                         scontrolCard
                     }
                     if nodes.isEmpty && details.isEmpty {
-                        ProgressView("Lade Partition-Details…")
-                            .tint(Theme.accent)
+                        SlurmyLoadingState(caption: "Lade Partition-Details…")
                             .padding(.vertical, 60)
                     }
                 }
@@ -70,24 +69,24 @@ struct PartitionSheetView: View {
                     .foregroundStyle(.primary)
             }
             Spacer()
-            Button(action: onRefresh) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .help("Aktualisieren")
+            SlurmyGlassButtonGroup {
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .help("Aktualisieren")
 
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .keyboardShortcut(.cancelAction)
+                .help("Schliessen (Esc)")
             }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .keyboardShortcut(.cancelAction)
-            .help("Schliessen (Esc)")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 18)
@@ -146,7 +145,9 @@ struct PartitionSheetView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // Opake Content-Karte — auf dem nativen Glas-Panel kein Material mehr
+        // (Glas-auf-Glas), siehe HIG.
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Theme.hairline, lineWidth: 0.5)
@@ -185,13 +186,13 @@ struct PartitionSheetView: View {
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 8))
                 }
             }
         }
         .animation(.snappy(duration: 0.2), value: expanded)
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Theme.hairline, lineWidth: 0.5)
@@ -422,7 +423,7 @@ struct PartitionSheetView: View {
             }
         }
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Theme.hairline, lineWidth: 0.5)

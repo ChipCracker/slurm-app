@@ -58,7 +58,7 @@ struct BookmarksView: View {
                 }
             }
             .navigationTitle("Marken")
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
         }
     }
 }

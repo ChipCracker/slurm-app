@@ -35,7 +35,7 @@ struct ConnectionSetupView: View {
                 }
             }
             .navigationTitle("Verbindung")
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
         }
         .onAppear {
             if let stored = appState.credentials { creds = stored }
@@ -43,16 +43,30 @@ struct ConnectionSetupView: View {
         }
     }
 
+    /// Freundlicher Willkommens-Header mit dem Slurmy-Maskottchen — der erste
+    /// Marken-Moment der App (Glow-Schatten wie in `SlurmyEmptyState`,
+    /// markenfest Blue Bright).
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Slurm Cluster")
-                .font(.title2.bold())
-                .foregroundColor(Theme.textPrimary)
-            Text("SSH-Verbindung zum kiz0-Login-Node")
-                .font(.subheadline)
-                .foregroundColor(Theme.textSecondary)
+        VStack(spacing: 14) {
+            Image("SlurmyMascot")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 140)
+                .shadow(color: Color(red: 0.16, green: 0.45, blue: 0.92).opacity(0.35),
+                        radius: 24, y: 6)
+                .accessibilityHidden(true)
+            VStack(spacing: 6) {
+                Text("Willkommen bei Slurmy")
+                    .font(.title2.bold())
+                    .foregroundColor(Theme.textPrimary)
+                Text("SSH-Verbindung zum kiz0-Login-Node")
+                    .font(.subheadline)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
     }
 
     private var formCard: some View {

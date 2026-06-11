@@ -2,8 +2,13 @@ import SwiftUI
 
 /// Abstracted Slurmy: a row of rounded "node" squares (the caterpillar's
 /// segments) that glow in a travelling cyan wave — the brand's loading
-/// indicator. Driven by `TimelineView(.animation)` so it stays smooth without
-/// a manual animation loop and pauses when off-screen.
+/// indicator. On macOS 26+/iOS 26 the segments are native Liquid-Glass shapes
+/// in a `GlassEffectContainer`: the wave lifts each segment slightly
+/// (inchworm arch) and drifts neighbours close enough that the glass merges —
+/// the "slurp". On macOS 14–15 it falls back to the classic flat squircle
+/// wave. Driven by `TimelineView(.animation)` so it stays smooth without a
+/// manual animation loop and pauses when off-screen. Honours "Bewegung
+/// reduzieren": static lit segments, no crawl.
 struct SlurmyLoadingView: View {
     var nodeSize: CGFloat = 14
     var count: Int = 5
@@ -11,22 +16,120 @@ struct SlurmyLoadingView: View {
     var tint: Color = Color(red: 0.62, green: 0.88, blue: 1.0)
     var idle: Color = Theme.textSecondary
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: nodeSize * 0.5) {
-                ForEach(0..<count, id: \.self) { i in
-                    let raw = (sin(t * 3.0 - Double(i) * 0.9) + 1) / 2   // 0…1
-                    let w = pow(raw, 3)                                  // sharpen the pulse
-                    RoundedRectangle(cornerRadius: nodeSize * 0.32, style: .continuous)
-                        .fill(idle.opacity(0.22).blend(tint, w))
-                        .frame(width: nodeSize, height: nodeSize)
-                        .scaleEffect(0.82 + 0.30 * w)
-                        .shadow(color: tint.opacity(w * 0.85), radius: w * nodeSize * 0.6)
+        Group {
+            if reduceMotion {
+                caterpillar(at: nil)
+            } else {
+                TimelineView(.animation) { timeline in
+                    caterpillar(at: timeline.date.timeIntervalSinceReferenceDate)
                 }
             }
         }
         .accessibilityLabel("Lädt")
+    }
+
+    /// Ein Frame der Raupe. `t == nil` → statische Pose (Reduce Motion).
+    @ViewBuilder
+    private func caterpillar(at t: Double?) -> some View {
+        if #available(macOS 26.0, *) {
+            glassCaterpillar(at: t)
+        } else {
+            legacyWave(at: t)
+        }
+    }
+
+    /// Glow-Gewicht 0…1 für Segment `i`. Ohne Zeit (`t == nil`) ein statischer
+    /// Verlauf, der zum Kopf hin heller wird — lesbar auch ohne Bewegung.
+    private func weight(_ i: Int, at t: Double?) -> Double {
+        guard let t else {
+            guard count > 1 else { return 0.7 }
+            return 0.25 + 0.55 * Double(i) / Double(count - 1)
+        }
+        let raw = (sin(t * 3.0 - Double(i) * 0.9) + 1) / 2   // 0…1
+        return pow(raw, 3)                                   // sharpen the pulse
+    }
+
+    // MARK: Legacy (macOS 14–15) — der bisherige flache Squircle-Wave.
+
+    private func legacyWave(at t: Double?) -> some View {
+        HStack(spacing: nodeSize * 0.5) {
+            ForEach(0..<count, id: \.self) { i in
+                let w = weight(i, at: t)
+                RoundedRectangle(cornerRadius: nodeSize * 0.32, style: .continuous)
+                    .fill(idle.opacity(0.22).blend(tint, w))
+                    .frame(width: nodeSize, height: nodeSize)
+                    .scaleEffect(0.82 + 0.30 * w)
+                    .shadow(color: tint.opacity(w * 0.85), radius: w * nodeSize * 0.6)
+            }
+        }
+    }
+
+    // MARK: Liquid Glass (macOS 26+/iOS 26)
+
+    /// Liquid-Glass-Raupe: jedes Segment ist eine echte Glasform; beim
+    /// Krabbeln driften Nachbarn nah genug zusammen, dass der Container das
+    /// Glas verschmelzen lässt. Maximal 8 Glasformen, keine extra Timer.
+    @available(macOS 26.0, *)
+    private func glassCaterpillar(at t: Double?) -> some View {
+        let n = min(count, 8)
+        return GlassEffectContainer(spacing: nodeSize * 0.5) {
+            HStack(spacing: nodeSize * 0.5) {
+                ForEach(0..<n, id: \.self) { i in
+                    glassSegment(i, of: n, at: t)
+                }
+            }
+        }
+        // Platz für Hebung + Antennen, damit in engen Layouts nichts abschneidet.
+        .padding(.top, nodeSize)
+    }
+
+    @available(macOS 26.0, *)
+    private func glassSegment(_ i: Int, of n: Int, at t: Double?) -> some View {
+        let w = weight(i, at: t)
+        let isHead = i == n - 1
+        let size = nodeSize * (isHead ? 1.14 : 1.0)
+        let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+        // Glas-Tönung: ruhig fast neutral, im Wellenkamm hell Zyan.
+        let glow = idle.opacity(0.28).blend(tint.opacity(0.9), w)
+        // Inchworm-Krabbeln: im Wellenkamm hebt sich das Segment leicht an und
+        // driftet horizontal — Nachbarsegmente stauchen sich, das Glas fließt
+        // ineinander. Statisch (Reduce Motion) bleibt alles in Reihe.
+        var lift: CGFloat = 0
+        var drift: CGFloat = 0
+        if let t {
+            lift = -nodeSize * 0.42 * CGFloat(w)
+            drift = nodeSize * 0.20 * CGFloat(cos(t * 3.0 - Double(i) * 0.9))
+        }
+
+        return Color.clear
+            .frame(width: size, height: size)
+            .glassEffect(.regular.tint(glow), in: shape)
+            .overlay(alignment: .top) {
+                if isHead { antennae(w) }
+            }
+            .scaleEffect(0.92 + 0.16 * w)
+            .offset(x: drift, y: lift)
+            .shadow(color: tint.opacity(0.25 + 0.6 * w), radius: nodeSize * (0.15 + 0.45 * w))
+    }
+
+    /// Zwei winzige leuchtende Fühler-Punkte über dem Kopfsegment.
+    private func antennae(_ w: Double) -> some View {
+        HStack(spacing: nodeSize * 0.30) {
+            antennaDot
+            antennaDot
+        }
+        .offset(y: -nodeSize * 0.34)
+        .opacity(0.45 + 0.55 * w)
+    }
+
+    private var antennaDot: some View {
+        Circle()
+            .fill(tint)
+            .frame(width: nodeSize * 0.16, height: nodeSize * 0.16)
+            .shadow(color: tint.opacity(0.9), radius: nodeSize * 0.12)
     }
 }
 

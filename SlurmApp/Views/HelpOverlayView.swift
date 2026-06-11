@@ -47,8 +47,7 @@ struct HelpOverlayView: View {
                     .font(.title3)
                     .frame(width: 32, height: 32)
             }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
+            .slurmyGlassCircleButton()
             .keyboardShortcut(.cancelAction)
             .help("Schliessen (Esc)")
         }
@@ -78,7 +77,8 @@ struct HelpOverlayView: View {
             }
         }
         .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // Opake Content-Karte auf dem Glas-Overlay (kein Glas-auf-Glas).
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Theme.hairline, lineWidth: 0.5)
@@ -91,7 +91,7 @@ struct HelpOverlayView: View {
                 .font(.callout.monospaced().bold())
                 .foregroundColor(Theme.accent)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 6))
                 .frame(minWidth: 56, alignment: .center)
             Text(desc)
                 .font(.callout)

@@ -46,8 +46,10 @@ final class AppState: ObservableObject {
         // Status auf „verbunden", die JobsView lädt dann statische Mock-Daten
         // (siehe JobsViewModel.loadMockIfRequested). Kein Netzwerk, kein Keychain.
         if ProcessInfo.processInfo.environment["SLURMIOS_UIMOCK"] == "1" {
+            // Der Mock-User muss eigene Mock-Jobs besitzen (JobsViewModel.mockJobs),
+            // sonst zeigt „nur meine Jobs" eine leere Liste.
             self.credentials = Credentials(
-                host: "cluster.example.com", port: 22, username: "demo",
+                host: "cluster.example.com", port: 22, username: "witzlch88229",
                 authMethod: .password, password: nil, privateKey: nil, passphrase: nil
             )
             self.connectionStatus = .connected

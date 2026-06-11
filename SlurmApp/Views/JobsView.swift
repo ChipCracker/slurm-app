@@ -473,7 +473,7 @@ struct JobsView: View {
                 inspectorPane
                     .navigationTitle("Cluster")
                     .inlineNavTitle()
-                    .navBarBackground(Theme.background)
+                    // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -765,11 +765,12 @@ struct JobsView: View {
                 .background(Theme.background)
                 .navigationTitle("Jobs")
                 .inlineNavTitle()
-                .navBarBackground(Theme.background)
+                // Keine opaken Nav-Bar-Hintergründe mehr: Die System-Bars
+                // adoptieren auf iOS 26 automatisch Liquid Glass und sampeln
+                // den Theme-Content darunter.
                 .navigationDestination(isPresented: iosDetailPresented) {
                     detailPane
                         .environmentObject(appState)
-                        .navBarBackground(Theme.background)
                 }
                 .toolbar { jobsToolbar }
                 // Im Auswahl-Modus die Tab-Leiste ausblenden, damit die untere
@@ -1758,6 +1759,7 @@ struct JobsView: View {
         switch appState.connectionStatus {
         case .connected:    return Theme.success
         case .connecting:   return Theme.warning
+        case .degraded:     return Theme.warning
         case .failed:       return Theme.danger
         case .disconnected: return Theme.textSecondary
         }

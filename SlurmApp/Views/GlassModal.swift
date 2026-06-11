@@ -29,9 +29,12 @@ extension View {
 
 // MARK: – Reusable glass panel
 
-/// The visual shell of a glass modal — frosted material, tinted gradient
-/// backdrop, rounded border. Exposed publicly so views can render an inline
-/// glass card outside of a modal too.
+/// The visual shell of a glass modal. Delegates to `slurmyGlass` (see
+/// Theme/LiquidGlass.swift): native Liquid Glass on macOS 26+/iOS 26, the
+/// legacy frosted look (gradient + ultraThinMaterial + hairline) on
+/// macOS 14/15. The subtle `Theme.glassTint` keeps user color themes /
+/// accent overrides coloring the glass. Exposed publicly so views can render
+/// an inline glass card outside of a modal too.
 struct GlassPanel<Content: View>: View {
     let cornerRadius: CGFloat
     @ViewBuilder var content: () -> Content
@@ -42,20 +45,16 @@ struct GlassPanel<Content: View>: View {
     }
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: Theme.glassGradient,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Rectangle().fill(.ultraThinMaterial)
-            content()
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(Theme.hairline, lineWidth: 0.5)
-        )
+        content()
+            // Das Panel ist auf macOS 26+/iOS 26 selbst eine `glassEffect`-
+            // Fläche — Controls darin (slurmyGlassButton/-CircleButton) lesen
+            // dieses Flag und de-glasen sich, damit kein Liquid Glass auf
+            // Liquid Glass gestapelt wird (siehe Theme/LiquidGlass.swift).
+            .environment(\.insideGlassPanel, true)
+            // Greedy wie der frühere ZStack mit LinearGradient: das Panel
+            // füllt den vom Container vorgeschlagenen (gedeckelten) Raum.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .slurmyGlass(cornerRadius: cornerRadius, tint: Theme.glassTint)
     }
 }
 
@@ -72,12 +71,13 @@ private struct GlassModalItemModifier<Item: Identifiable, ModalContent: View>: V
         // iPhone/iPad: natives Bottom-Sheet mit Detents statt zentriertem
         // Desktop-Overlay. `glassModalDismiss` wird durchgereicht, damit die
         // Close-Buttons im Inhalt weiter funktionieren.
+        // Kein opakes `presentationBackground` mehr — das System-Sheet bringt
+        // auf iOS 26 nativ Liquid Glass mit (opak hätte es unterdrückt).
         content.sheet(item: $item) { value in
             modalContent(value)
                 .environment(\.glassModalDismiss, { item = nil })
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
-                .presentationBackground(Theme.background)
         }
         #else
         content
@@ -106,12 +106,12 @@ private struct GlassModalBoolModifier<ModalContent: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(iOS)
+        // Wie oben: System-Sheet-Hintergrund (Liquid Glass) statt opakem Theme.
         content.sheet(isPresented: $isPresented) {
             modalContent()
                 .environment(\.glassModalDismiss, { isPresented = false })
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
-                .presentationBackground(Theme.background)
         }
         #else
         content

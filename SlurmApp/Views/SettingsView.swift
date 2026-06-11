@@ -61,7 +61,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Einstellungen")
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
         }
         .alert("Zugangsdaten löschen?", isPresented: $showForgetConfirm) {
             Button("Abbrechen", role: .cancel) {}
@@ -453,10 +453,24 @@ struct SettingsView: View {
         }
     }
 
+    /// "Über Slurmy"-Footer: kleines Maskottchen, App-Name + Version und der
+    /// Marken-Slogan (bewusst englisch, Brand-Asset). Bewusst keine Karte —
+    /// wie der bisherige Footer.
     private var aboutFooter: some View {
-        VStack(spacing: 4) {
-            Text("Version \(appVersion) (\(appBuild))")
+        VStack(spacing: 6) {
+            Image("SlurmyMascot")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 76)
+                .shadow(color: Color(red: 0.16, green: 0.45, blue: 0.92).opacity(0.3),
+                        radius: 16, y: 4)
+                .accessibilityHidden(true)
+                .padding(.bottom, 2)
+            Text("Slurmy \(appVersion) (\(appBuild))")
                 .font(.caption.monospaced())
+                .foregroundColor(Theme.textSecondary)
+            Text("Clusters, simplified. Beautifully.")
+                .font(.caption.italic())
                 .foregroundColor(Theme.textSecondary)
             Text("Read-only by default · mutierende Befehle nur nach Bestätigung")
                 .font(.caption2)
@@ -464,7 +478,7 @@ struct SettingsView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 4)
+        .padding(.top, 8)
     }
 
     private var appVersion: String {

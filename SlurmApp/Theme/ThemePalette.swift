@@ -46,9 +46,12 @@ struct ThemePalette {
     var otherNonPreempt: Color
     var otherPreempt: Color
     var gpuFree: Color
-    /// Gradient behind `GlassPanel`. nil ⇒ derived from accent/purple/background
-    /// (today's look); themes may override.
+    /// Gradient behind the legacy `GlassPanel` fallback (macOS 14/15).
+    /// nil ⇒ derived from accent/purple/background; themes may override.
     var glassGradient: [Color]? = nil
+    /// Single tint for NATIVE Liquid Glass (macOS 26+/iOS 26).
+    /// nil ⇒ derived from the accent (`Theme.glassTint`); themes may override.
+    var glassTint: Color? = nil
 }
 
 extension ThemePalette {
@@ -173,7 +176,8 @@ extension ThemePalette {
         otherNonPreempt: Color(hex: 0xC0402E),
         otherPreempt:    Color(hex: 0xC86B4A),
         gpuFree:         Color(hex: 0x123A20),
-        glassGradient: [Color(hex: 0x39FF6A).opacity(0.14), Color(hex: 0x0B3016).opacity(0.5), Color(hex: 0x021008).opacity(0.6)])
+        glassGradient: [Color(hex: 0x39FF6A).opacity(0.14), Color(hex: 0x0B3016).opacity(0.5), Color(hex: 0x021008).opacity(0.6)],
+        glassTint: Color(hex: 0x39FF6A).opacity(0.14))
 }
 
 /// Full colour theme, persisted via `@AppStorage("colorTheme")`. Orthogonal to

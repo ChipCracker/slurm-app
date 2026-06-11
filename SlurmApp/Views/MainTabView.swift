@@ -170,7 +170,15 @@ private struct MacRootView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background {
+            if #available(macOS 26.0, *) {
+                // Die Sidebar ist auf macOS 26 bereits Liquid Glass — ein
+                // zusätzlicher `.bar`-Hintergrund wäre Doppel-Chrome.
+                EmptyView()
+            } else {
+                Rectangle().fill(.bar)
+            }
+        }
     }
 
     private var connectionLabel: String {

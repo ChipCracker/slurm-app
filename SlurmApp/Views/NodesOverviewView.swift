@@ -54,18 +54,20 @@ struct NodesOverviewView: View {
                     .foregroundStyle(.primary)
             }
             Spacer()
-            Button(action: { Task { await reload() } }) {
-                Image(systemName: loading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
-                    .font(.title3).frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain).background(.thinMaterial, in: Circle())
-            .disabled(loading).help("Aktualisieren")
+            SlurmyGlassButtonGroup {
+                Button(action: { Task { await reload() } }) {
+                    Image(systemName: loading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                        .font(.title3).frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .disabled(loading).help("Aktualisieren")
 
-            Button(action: dismiss) {
-                Image(systemName: "xmark").font(.title3).frame(width: 32, height: 32)
+                Button(action: dismiss) {
+                    Image(systemName: "xmark").font(.title3).frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .keyboardShortcut(.cancelAction).help("Schliessen (Esc)")
             }
-            .buttonStyle(.plain).background(.thinMaterial, in: Circle())
-            .keyboardShortcut(.cancelAction).help("Schliessen (Esc)")
         }
         .padding(.horizontal, 24).padding(.vertical, 18)
     }
@@ -131,11 +133,11 @@ struct NodesOverviewView: View {
                 Text(err).font(.callout.monospaced()).foregroundColor(Theme.danger)
                     .multilineTextAlignment(.center).textSelection(.enabled)
                 Button("Erneut versuchen") { Task { await reload() } }
+                    .slurmyGlassButton()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity).padding(24)
         } else if loading && nodes.isEmpty {
-            ProgressView("Lade Knoten…").tint(Theme.accent)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SlurmyLoadingState(caption: "Lade Knoten…")
         } else if filtered.isEmpty {
             VStack(spacing: 8) {
                 Image(systemName: "tray").font(.largeTitle).foregroundStyle(.secondary)
@@ -194,7 +196,8 @@ struct NodesOverviewView: View {
                 .frame(width: 80, alignment: .trailing)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        // Opake Content-Zeile statt Material — kein Glas-auf-Glas im Modal.
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: – Derived

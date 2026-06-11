@@ -95,7 +95,8 @@ struct BatchValueSheet: View {
             }
             .navigationTitle(action.title)
             .inlineNavTitle()
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund mehr — die System-Bar bringt auf
+            // iOS 26 nativ Liquid Glass mit und sampelt den Theme-Content.
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Schließen") { dismiss() }
@@ -157,16 +158,19 @@ struct BatchValueSheet: View {
     }
 
     private var applyButton: some View {
+        // Prominenter Glas-Button (Fallback: .borderedProminent) statt der
+        // manuellen Accent-Fläche — Disabled-Optik übernimmt das System.
         Button {
             onApply(value.trimmingCharacters(in: .whitespaces))
             dismiss()
         } label: {
             Label("Anwenden", systemImage: "checkmark.circle.fill")
-                .frame(maxWidth: .infinity).padding(.vertical, 12)
-                .background(canApply ? Theme.accent : Theme.surfaceElevated)
-                .foregroundColor(canApply ? Theme.onAccent : Theme.textSecondary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .font(.callout.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
         }
+        .slurmyGlassButton(prominent: true)
+        .tint(Theme.accent)
         .disabled(!canApply)
     }
 

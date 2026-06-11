@@ -148,10 +148,21 @@ enum Theme {
     /// Hairline color for dividers and 0.5pt strokes.
     static var hairline: Color        { palette.hairline }
 
-    /// Gradient behind `GlassPanel` — themeable; default mirrors today's look.
+    /// Gradient behind the LEGACY `GlassPanel` fallback (macOS 14/15) —
+    /// themeable; mirrors the pre-Liquid-Glass look.
     static var glassGradient: [Color] {
         palette.glassGradient
             ?? [accent.opacity(0.20), purple.opacity(0.12), background.opacity(0.4)]
+    }
+
+    /// Einzel-Tönung für natives Liquid Glass (macOS 26+/iOS 26): echtes Glas
+    /// liefert Tiefe/Blur selbst, deshalb kollabiert der 3-Stop-`glassGradient`
+    /// zu einem subtilen Akzent-Tint. Über `accent` bleibt das Glas voll
+    /// Theme-/Override-reaktiv; opinionated Themes können via
+    /// `ThemePalette.glassTint` überschreiben. Nicht mit `surface`/`background`
+    /// tinten — das macht das Glas wieder opak.
+    static var glassTint: Color {
+        palette.glassTint ?? accent.opacity(0.14)
     }
 
     static func stateColor(_ state: String) -> Color {

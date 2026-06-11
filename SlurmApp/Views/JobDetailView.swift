@@ -1033,26 +1033,26 @@ struct LogDetailSheetView: View {
             .controlSize(.small)
             .help("Log-Follow-Mode (5s auto-refresh)")
 
-            Button {
-                if !content.isEmpty { Clipboard.copy(content) }
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .help("Log kopieren")
+            SlurmyGlassButtonGroup {
+                Button {
+                    if !content.isEmpty { Clipboard.copy(content) }
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .help("Log kopieren")
 
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .keyboardShortcut(.cancelAction)
+                .help("Schliessen (Esc / Leertaste)")
             }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .keyboardShortcut(.cancelAction)
-            .help("Schliessen (Esc / Leertaste)")
         }
         .padding(.horizontal, 24).padding(.vertical, 18)
     }
