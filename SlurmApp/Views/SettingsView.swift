@@ -130,7 +130,27 @@ struct SettingsView: View {
                 }
                 .toggleStyle(.switch)
                 .tint(Theme.accent)
-                Text("Native Glaseffekte von macOS/iOS 26. Deaktiviert: klassischer Frost-Look.")
+                // Live-Vorschau mit denselben Modifiern wie die echten
+                // Glas-Flächen: Der Settings-Screen selbst hat keine — ohne
+                // Vorschau wirkte der Schalter hier folgenlos. Der bunte
+                // Verlauf dahinter macht Refraktion (Glas) vs. Frost sichtbar.
+                ZStack {
+                    LinearGradient(
+                        colors: [Theme.accent.opacity(0.55),
+                                 Theme.purple.opacity(0.45),
+                                 Theme.cyan.opacity(0.55)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    Text(liquidGlassEnabled ? "Liquid Glass" : "Frost-Look")
+                        .font(.callout.bold())
+                        .foregroundColor(Theme.textPrimary)
+                        .padding(.horizontal, 22).padding(.vertical, 10)
+                        .slurmyGlass(cornerRadius: 12, tint: Theme.glassTint)
+                }
+                .frame(height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+                Text("Native Glaseffekte von macOS/iOS 26 — wirkt auf Panels, Dialoge, Glas-Buttons und die Lade-Animation. System-Leisten bleiben nativ. Deaktiviert: klassischer Frost-Look.")
                     .font(.caption)
                     .foregroundColor(Theme.textSecondary)
             }
