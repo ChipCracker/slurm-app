@@ -34,14 +34,22 @@ import SwiftUI
 /// System-Chrome (Toolbar/Sidebar/Sheet-Rahmen) bleibt vom Schalter unberührt.
 enum LiquidGlassSetting {
     static let storageKey = "liquidGlassEnabled"
+    /// Glas-Intensität 0…1 (Settings-Slider „Getönt … Klar"): steuert, wie
+    /// stark das Fenster-Material durch die Theme-Tönung der Panes scheint.
+    static let intensityKey = "liquidGlassIntensity"
+    static let defaultIntensity = 0.5
 
     private static var cached: Bool?
+    private static var cachedIntensity: Double?
     private static let cacheInvalidator: NSObjectProtocol =
         NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: UserDefaults.standard,
             queue: .main
-        ) { _ in LiquidGlassSetting.cached = nil }
+        ) { _ in
+            LiquidGlassSetting.cached = nil
+            LiquidGlassSetting.cachedIntensity = nil
+        }
 
     /// true (Default) ⇒ native Glas-Effekte erlaubt (sofern das OS sie kann).
     static var isEnabled: Bool {
@@ -51,11 +59,30 @@ enum LiquidGlassSetting {
         cached = v
         return v
     }
+
+    static var intensity: Double {
+        _ = cacheInvalidator
+        if let cachedIntensity { return cachedIntensity }
+        let v = UserDefaults.standard.object(forKey: intensityKey) as? Double ?? defaultIntensity
+        cachedIntensity = v
+        return v
+    }
+
+    /// Tönungs-Deckkraft der Panes aus der Intensität: 0 ⇒ 0.9 (kaum Glas),
+    /// 0.5 ⇒ 0.55 (Default), 1 ⇒ 0.2 (fast voll Glas). Textkontrast bleibt
+    /// auch bei „Klar" tragfähig, weil das Material selbst diffundiert.
+    static func paneTintOpacity(intensity: Double) -> Double {
+        0.9 - 0.7 * min(max(intensity, 0), 1)
+    }
 }
 
 private struct LiquidGlassEnabledKey: EnvironmentKey {
     /// Fallback ohne Root-Injection (Previews etc.): der gecachte Settings-Wert.
     static var defaultValue: Bool { LiquidGlassSetting.isEnabled }
+}
+
+private struct LiquidGlassIntensityKey: EnvironmentKey {
+    static var defaultValue: Double { LiquidGlassSetting.intensity }
 }
 
 extension EnvironmentValues {
@@ -64,6 +91,13 @@ extension EnvironmentValues {
     var liquidGlassEnabled: Bool {
         get { self[LiquidGlassEnabledKey.self] }
         set { self[LiquidGlassEnabledKey.self] = newValue }
+    }
+
+    /// Glas-Intensität 0…1 (s. LiquidGlassSetting.intensityKey) — ebenfalls
+    /// vom Root injiziert, damit der Slider live wirkt.
+    var liquidGlassIntensity: Double {
+        get { self[LiquidGlassIntensityKey.self] }
+        set { self[LiquidGlassIntensityKey.self] = newValue }
     }
 }
 
@@ -235,12 +269,19 @@ extension View {
 
 private struct SlurmyWindowGlassModifier: ViewModifier {
     @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
+    @Environment(\.liquidGlassIntensity) private var liquidGlassIntensity
 
     @ViewBuilder
     func body(content: Content) -> some View {
         #if os(macOS)
         if #available(macOS 26.0, *), liquidGlassEnabled {
-            content.containerBackground(.thinMaterial, for: .window)
+            // Hohe Intensität ⇒ noch dünneres Material: der ganze
+            // Hintergrund wird praktisch Glas.
+            if liquidGlassIntensity > 0.7 {
+                content.containerBackground(.ultraThinMaterial, for: .window)
+            } else {
+                content.containerBackground(.thinMaterial, for: .window)
+            }
         } else {
             content
         }
@@ -261,13 +302,14 @@ private struct SlurmyContentBackgroundModifier: ViewModifier {
 /// Fenster-Material darunter, dort würde die Theme-Farbe nur verblassen.
 struct SlurmyPaneBackground: View {
     @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
+    @Environment(\.liquidGlassIntensity) private var liquidGlassIntensity
 
     var body: some View {
         #if os(macOS)
         if #available(macOS 26.0, *), liquidGlassEnabled {
-            // 0.55: genug Tönung für Theme-Identität und Textkontrast,
-            // genug Transparenz, damit das Fenster-Material sichtbar bleibt.
-            Theme.background.opacity(0.55)
+            // Deckkraft folgt dem Intensitäts-Slider (Getönt … Klar);
+            // Default 0.5 ⇒ 0.55 Tönung über dem Fenster-Material.
+            Theme.background.opacity(LiquidGlassSetting.paneTintOpacity(intensity: liquidGlassIntensity))
         } else {
             Theme.background
         }

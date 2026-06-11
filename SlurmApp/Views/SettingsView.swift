@@ -26,6 +26,7 @@ struct SettingsView: View {
     @AppStorage(AppTheme.storageKey) private var accentThemeRaw: String = AppTheme.default.rawValue
     @AppStorage(AppColorTheme.storageKey) private var colorThemeRaw: String = AppColorTheme.default.rawValue
     @AppStorage(LiquidGlassSetting.storageKey) private var liquidGlassEnabled: Bool = true
+    @AppStorage(LiquidGlassSetting.intensityKey) private var liquidGlassIntensity: Double = LiquidGlassSetting.defaultIntensity
     @AppStorage("textSizeIndex") private var textSizeIndex: Int = 3
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -150,7 +151,25 @@ struct SettingsView: View {
                 .frame(height: 72)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityHidden(true)
-                Text("Native Glaseffekte von macOS/iOS 26 — wirkt auf Panels, Dialoge, Glas-Buttons und die Lade-Animation. System-Leisten bleiben nativ. Deaktiviert: klassischer Frost-Look.")
+                #if os(macOS)
+                // Intensitäts-Slider (Apples „Getönt/Klar", nur stufenlos):
+                // steuert die Theme-Tönung über dem Fenster-Material — der
+                // Settings-Hintergrund reagiert live beim Ziehen.
+                if liquidGlassEnabled {
+                    HStack(spacing: 10) {
+                        Text("Getönt")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                        Slider(value: $liquidGlassIntensity, in: 0...1)
+                            .tint(Theme.accent)
+                            .accessibilityLabel("Glas-Intensität")
+                        Text("Klar")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                }
+                #endif
+                Text("Native Glaseffekte von macOS/iOS 26 — wirkt auf Panels, Dialoge, Glas-Buttons, Lade-Animation und den Fenster-Hintergrund. System-Leisten bleiben nativ. Deaktiviert: klassischer Frost-Look.")
                     .font(.caption)
                     .foregroundColor(Theme.textSecondary)
             }

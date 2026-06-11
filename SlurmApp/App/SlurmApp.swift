@@ -29,6 +29,7 @@ struct SlurmApp: App {
     /// damit der Baum beim Umschalten neu rendert und die Glas-Helfer
     /// (Theme/LiquidGlass.swift) sofort den neuen Wert sehen.
     @AppStorage(LiquidGlassSetting.storageKey) private var liquidGlassEnabled: Bool = true
+    @AppStorage(LiquidGlassSetting.intensityKey) private var liquidGlassIntensity: Double = LiquidGlassSetting.defaultIntensity
     private var colorTheme: AppColorTheme { AppColorTheme(rawValue: colorThemeRaw) ?? .default }
     /// A custom accent override wins; else the standard theme uses the chosen
     /// accent and opinionated themes their own.
@@ -76,6 +77,7 @@ struct SlurmApp: App {
                 .preferredColorScheme(effectiveColorScheme)
                 .tint(accentColor)
                 .environment(\.liquidGlassEnabled, liquidGlassEnabled)
+                .environment(\.liquidGlassIntensity, liquidGlassIntensity)
                 // Nur überschreiben, wenn der Nutzer per ⌘+/⌘- abgewichen ist —
                 // sonst die System-Textgröße (iOS Dynamic Type) durchlassen.
                 .modifier(TextScale(size: currentIndex == defaultIndex ? nil : sizes[currentIndex]))
