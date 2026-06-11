@@ -72,7 +72,7 @@ enum LiquidGlassSetting {
     /// 0.5 ⇒ 0.55 (Default), 1 ⇒ 0.2 (fast voll Glas). Textkontrast bleibt
     /// auch bei „Klar" tragfähig, weil das Material selbst diffundiert.
     static func paneTintOpacity(intensity: Double) -> Double {
-        0.9 - 0.7 * min(max(intensity, 0), 1)
+        0.9 - 0.78 * min(max(intensity, 0), 1)
     }
 }
 
@@ -275,13 +275,14 @@ private struct SlurmyWindowGlassModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(macOS)
         if #available(macOS 26.0, *), liquidGlassEnabled {
-            // Hohe Intensität ⇒ noch dünneres Material: der ganze
-            // Hintergrund wird praktisch Glas.
-            if liquidGlassIntensity > 0.7 {
-                content.containerBackground(.ultraThinMaterial, for: .window)
-            } else {
-                content.containerBackground(.thinMaterial, for: .window)
-            }
+            // WICHTIG: SwiftUI-Materialien blenden nur In-Window-Inhalt —
+            // als Fensterhintergrund wirken sie wie eine flache Fläche.
+            // Echtes Durchscheinen des Desktops liefert nur AppKits
+            // NSVisualEffectView mit .behindWindow-Blending.
+            content.background(
+                BehindWindowBlur(clear: liquidGlassIntensity > 0.7)
+                    .ignoresSafeArea()
+            )
         } else {
             content
         }
@@ -290,6 +291,25 @@ private struct SlurmyWindowGlassModifier: ViewModifier {
         #endif
     }
 }
+
+#if os(macOS)
+/// Behind-Window-Blur: sampelt Desktop/Fenster HINTER dem App-Fenster.
+/// `clear` (Intensität > 0.7) nimmt das durchsichtigere HUD-Material.
+private struct BehindWindowBlur: NSViewRepresentable {
+    let clear: Bool
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.blendingMode = .behindWindow
+        v.state = .active
+        return v
+    }
+
+    func updateNSView(_ v: NSVisualEffectView, context: Context) {
+        v.material = clear ? .hudWindow : .underWindowBackground
+    }
+}
+#endif
 
 private struct SlurmyContentBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
@@ -307,9 +327,17 @@ struct SlurmyPaneBackground: View {
     var body: some View {
         #if os(macOS)
         if #available(macOS 26.0, *), liquidGlassEnabled {
-            // Deckkraft folgt dem Intensitäts-Slider (Getönt … Klar);
-            // Default 0.5 ⇒ 0.55 Tönung über dem Fenster-Material.
-            Theme.background.opacity(LiquidGlassSetting.paneTintOpacity(intensity: liquidGlassIntensity))
+            // Blur IN der Pane-Fläche, nicht hinter der NavigationSplitView:
+            // die Split-View malt ihre Detail-Spalte opak und würde einen
+            // tieferliegenden Blur-Layer komplett verdecken. .behindWindow
+            // sampelt den Desktop unabhängig von der In-Window-Schichtung.
+            ZStack {
+                BehindWindowBlur(clear: liquidGlassIntensity > 0.7)
+                // Deckkraft folgt dem Intensitäts-Slider (Getönt … Klar);
+                // Default 0.5 ⇒ 0.55 Tönung über dem Desktop-Blur.
+                Theme.background.opacity(LiquidGlassSetting.paneTintOpacity(intensity: liquidGlassIntensity))
+            }
+            .ignoresSafeArea()
         } else {
             Theme.background
         }
