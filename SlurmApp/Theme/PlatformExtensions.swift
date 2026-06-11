@@ -10,6 +10,17 @@ extension View {
         #endif
     }
 
+    /// macOS: System-Zeilenstreifen der `Table` abschalten — sie rendern als
+    /// Behind-Window-Vibrancy und lassen den Desktop durch den Content banden,
+    /// sobald das Fenster eine Glas-Ebene hat. iOS kennt den Modifier nicht.
+    func plainRowBackgrounds() -> some View {
+        #if os(macOS)
+        self.alternatingRowBackgrounds(.disabled)
+        #else
+        self
+        #endif
+    }
+
     /// Numerische Tastatur (iOS) für Felder wie den Port.
     func numberInput() -> some View {
         #if os(iOS)

@@ -260,17 +260,13 @@ private struct SlurmyGlassCircleButtonModifier: ViewModifier {
 // diffundiert den dahinterliegenden Fenster-Blur zu einer gleichmäßigen Fläche.
 
 extension View {
-    /// Karten-Chrome für Content-Elemente: ultraThinMaterial + Theme-Tönung +
-    /// Hairline. Unabhängig vom Glas-Schalter (auf opakem Fenster wirkt es wie
-    /// die bisherige Surface-Karte).
+    /// Karten-Chrome für Content-Elemente: OPAKE Theme-Surface + Hairline —
+    /// identischer Look bei Glas an/aus. Kein Material: jedes Material würde
+    /// den Behind-Window-Blur durchscheinen lassen (in Dark Mode bandete der
+    /// Desktop sichtbar durch die Tabellenzeilen).
     func slurmyFrostCard(cornerRadius: CGFloat = 14) -> some View {
         self
-            .background(
-                ZStack {
-                    Rectangle().fill(.ultraThinMaterial)
-                    Theme.surface.opacity(0.55)
-                }
-            )
+            .background(Theme.surface)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -278,15 +274,9 @@ extension View {
             )
     }
 
-    /// Randlose Frost-Fläche für große Content-Blöcke (z. B. die Job-Tabelle):
-    /// verhindert, dass der Fenster-Blur durch Zeilen/Leerflächen bandet.
+    /// Randlose, OPAKE Fläche für große Content-Blöcke (z. B. die Job-Tabelle).
     func slurmyFrostSurface() -> some View {
-        self.background(
-            ZStack {
-                Rectangle().fill(.ultraThinMaterial)
-                Theme.background.opacity(0.45)
-            }
-        )
+        self.background(Theme.background)
     }
 }
 

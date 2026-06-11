@@ -2353,8 +2353,10 @@ struct JobsView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        // Frost liefert die schwebende Karte in `leadingPane` — hier nur den
-        // System-Hintergrund verstecken, sonst doppelt sich das Material.
+        // Opaker Boden kommt von der Karte in `leadingPane`; die System-
+        // Zeilenstreifen müssen aus — sie sampeln als Vibrancy den Desktop
+        // und banden sonst durch den Content (sichtbar v. a. im Dark Mode).
+        .plainRowBackgrounds()
         .focused($focusedPane, equals: .table)
         .focusable()
         .focusEffectDisabled()
