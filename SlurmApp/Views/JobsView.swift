@@ -1811,22 +1811,43 @@ struct JobsView: View {
 
     private var leadingPane: some View {
         ZStack {
+            #if os(iOS)
             Theme.background.ignoresSafeArea()
             VStack(spacing: 0) {
-                #if os(iOS)
                 // iPhone: Cluster-Leiste immer sichtbar (Tap öffnet das Sheet).
                 compactClusterBar
                 Divider().background(Theme.border.opacity(0.6))
-                #endif
-                // macOS: collapsed inspector = just collapsed; no compact cluster
-                // strip — the info simply isn't shown until the column is opened.
-                filterBar
-                if let err = vm.error {
-                    ErrorBanner(message: err)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                }
-                jobsListing
+                leadingStack
             }
+            #else
+            // Kein opaker Pane-Boden mehr: Der Glas-Untergrund kommt von
+            // paneLayout (.slurmyContentBackground) — die Tabelle schwebt
+            // als eingerückte Frost-Karte darüber, sodass der
+            // "Hinter-Hintergrund" bei aktivem Liquid Glass sichtbar ist.
+            leadingStack
+                .slurmyFrostSurface()
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 0.5)
+                )
+                .padding(10)
+            #endif
+        }
+    }
+
+    /// Filterleiste + Fehlerbanner + Tabelle/Liste — gemeinsamer Kern beider
+    /// Plattform-Varianten von `leadingPane`.
+    private var leadingStack: some View {
+        VStack(spacing: 0) {
+            // macOS: collapsed inspector = just collapsed; no compact cluster
+            // strip — the info simply isn't shown until the column is opened.
+            filterBar
+            if let err = vm.error {
+                ErrorBanner(message: err)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+            }
+            jobsListing
         }
     }
 
@@ -2332,10 +2353,8 @@ struct JobsView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        // Element-Regel: Die Tabelle frostet IMMER — sonst banden die
-        // ungestreiften Zeilen + Leerfläche den Fenster-Blur mitten durch
-        // den Content. Liquid Glass bleibt dem Gesamthintergrund vorbehalten.
-        .slurmyFrostSurface()
+        // Frost liefert die schwebende Karte in `leadingPane` — hier nur den
+        // System-Hintergrund verstecken, sonst doppelt sich das Material.
         .focused($focusedPane, equals: .table)
         .focusable()
         .focusEffectDisabled()
