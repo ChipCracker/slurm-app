@@ -68,11 +68,13 @@ enum LiquidGlassSetting {
         return v
     }
 
-    /// Tönungs-Deckkraft der Panes aus der Intensität: 0 ⇒ 0.9 (kaum Glas),
-    /// 0.5 ⇒ 0.55 (Default), 1 ⇒ 0.2 (fast voll Glas). Textkontrast bleibt
-    /// auch bei „Klar" tragfähig, weil das Material selbst diffundiert.
+    /// Tönungs-Deckkraft der Panes aus der Intensität: 0 ⇒ 0.6, 0.5 ⇒ 0.36,
+    /// 1 ⇒ 0.12. Bewusst dünn: Eine satte Theme-Tönung über dem warmen
+    /// Desktop-Blur mischt sich im Dark Mode zu schlammigem Braun — die
+    /// Abdunklung übernimmt dort ein neutraler schwarzer Scrim
+    /// (SlurmyPaneBackground), nicht die Farbe.
     static func paneTintOpacity(intensity: Double) -> Double {
-        0.9 - 0.78 * min(max(intensity, 0), 1)
+        0.6 - 0.48 * min(max(intensity, 0), 1)
     }
 }
 
@@ -98,6 +100,22 @@ extension EnvironmentValues {
     var liquidGlassIntensity: Double {
         get { self[LiquidGlassIntensityKey.self] }
         set { self[LiquidGlassIntensityKey.self] = newValue }
+    }
+}
+
+// MARK: – Environment: sitzt die View in einem Frost-ELEMENT?
+
+private struct InsideFrostElementKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Von Frost-Elementen (Dashboard-Widgets etc.) gesetzt: Pane-Hintergründe
+    /// IM Element rendern opak — Liquid Glas gehört nur der Leinwand zwischen
+    /// den Elementen, nie ihrem Inneren.
+    var insideFrostElement: Bool {
+        get { self[InsideFrostElementKey.self] }
+        set { self[InsideFrostElementKey.self] = newValue }
     }
 }
 
@@ -351,19 +369,37 @@ private struct SlurmyContentBackgroundModifier: ViewModifier {
 struct SlurmyPaneBackground: View {
     @Environment(\.liquidGlassEnabled) private var liquidGlassEnabled
     @Environment(\.liquidGlassIntensity) private var liquidGlassIntensity
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.insideFrostElement) private var insideFrostElement
 
     var body: some View {
         #if os(macOS)
-        if #available(macOS 26.0, *), liquidGlassEnabled {
+        if insideFrostElement {
+            // Im Inneren eines Frost-Elements (z. B. Detail-Widget im
+            // Dashboard) niemals Glas — das Element bleibt durchgehend opak.
+            Theme.background
+        } else if #available(macOS 26.0, *), liquidGlassEnabled {
             // Blur IN der Pane-Fläche, nicht hinter der NavigationSplitView:
             // die Split-View malt ihre Detail-Spalte opak und würde einen
             // tieferliegenden Blur-Layer komplett verdecken. .behindWindow
             // sampelt den Desktop unabhängig von der In-Window-Schichtung.
             ZStack {
-                BehindWindowBlur(clear: liquidGlassIntensity > 0.7)
-                // Deckkraft folgt dem Intensitäts-Slider (Getönt … Klar);
-                // Default 0.5 ⇒ 0.55 Tönung über dem Desktop-Blur.
-                Theme.background.opacity(LiquidGlassSetting.paneTintOpacity(intensity: liquidGlassIntensity))
+                // IMMER das HUD-Material: .underWindowBackground ist im Dark
+                // Mode fast opak und blurt im Light Mode so schwach, dass
+                // schmale Glas-Stege Desktop-Kanten als schmutzige Schlieren
+                // zeigen. .hudWindow blurt stark und gleichmäßig — die
+                // Intensität regeln Scrim (dunkel) bzw. Tönung (hell).
+                BehindWindowBlur(clear: true)
+                if colorScheme == .dark {
+                    // Apples Rezept für dunkles Glas: NUR neutral schwarz
+                    // dimmen, keine Farbtönung — jede satte Farbe über warmem
+                    // Desktop-Blur verschlammt zu Braun. Der Slider regelt
+                    // die Scrim-Stärke (Getönt = gedeckt, Klar = durchlässig).
+                    Color.black.opacity(0.58 - 0.38 * min(max(liquidGlassIntensity, 0), 1))
+                } else {
+                    // Hell: dünne Theme-Tönung über dem Blur.
+                    Theme.background.opacity(LiquidGlassSetting.paneTintOpacity(intensity: liquidGlassIntensity))
+                }
             }
             .ignoresSafeArea()
         } else {

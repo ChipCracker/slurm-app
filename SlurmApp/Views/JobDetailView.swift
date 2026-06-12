@@ -245,6 +245,8 @@ struct JobDetailView: View {
     @State private var headBlockHeight: CGFloat = .infinity
     #endif
     @Environment(\.scenePhase) private var scenePhase
+    /// true im Dashboard-Widget: ein Scrollbereich, alles ausgeklappt.
+    @Environment(\.insideFrostElement) private var insideFrostElement
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -275,7 +277,14 @@ struct JobDetailView: View {
         ZStack {
             SlurmyPaneBackground().ignoresSafeArea()
             #if os(macOS)
-            macDetailLayout
+            // Im Dashboard-Widget (Frost-Element): EIN Scrollbereich fürs
+            // ganze Element, alle inneren Karten voll ausgeklappt — das
+            // Viewport-Layout mit fixem Kopf gehört dem klassischen Split.
+            if insideFrostElement {
+                scrollingDetailLayout
+            } else {
+                macDetailLayout
+            }
             #else
             scrollingDetailLayout
             #endif
@@ -388,9 +397,11 @@ struct JobDetailView: View {
         }
         .frame(maxHeight: min(headBlockHeight, capHeight))
     }
-    #else
-    /// iOS unverändert: die Gesamtseite scrollt außen (Touch-Idiom inkl.
-    /// Pull-to-Refresh); die v/l-Sprünge nutzen den äußeren Scroll-Proxy.
+    #endif
+
+    /// Geteilt: iOS-Seite (Außen-Scroll, Touch-Idiom inkl. Pull-to-Refresh)
+    /// UND macOS-Dashboard-Widget (insideFrostElement — ein Scrollbereich,
+    /// alle Karten ausgeklappt); die v/l-Sprünge nutzen den Scroll-Proxy.
     private var scrollingDetailLayout: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -423,7 +434,6 @@ struct JobDetailView: View {
             .background(detailShortcuts(proxy: proxy))
         }
     }
-    #endif
 
     /// Open the more relevant of the two log windows: stderr when it has
     /// content (errors are what you usually want to read), otherwise stdout.
@@ -976,22 +986,34 @@ struct JobDetailView: View {
                 .controlSize(.small)
                 Text("letzte 200 Zeilen").font(.caption2).foregroundColor(Theme.textSecondary)
             }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(body)
-                        .font(.system(.footnote, design: .monospaced))
-                        .foregroundColor(Theme.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .id("logBottom-\(title)")
-                }
-                // Flexibel: füllt den Kartenanteil am Log-Bereich (macOS,
-                // siehe macDetailLayout) — sonst fixe 260 pt wie gehabt.
-                .frame(maxHeight: flexible ? .infinity : 260)
-                .onChange(of: body) { _, _ in
-                    if vm.followMode {
-                        withMotion(.linear(duration: 0.15)) {
-                            proxy.scrollTo("logBottom-\(title)", anchor: .bottom)
+            if insideFrostElement {
+                // Dashboard-Widget: komplett ausgeklappt — das Element
+                // scrollt als Ganzes, der Log braucht keinen eigenen
+                // Scrollbereich (Follow-Mode aktualisiert nur den Text).
+                Text(body)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundColor(Theme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .id("logBottom-\(title)")
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        Text(body)
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundColor(Theme.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .id("logBottom-\(title)")
+                    }
+                    // Flexibel: füllt den Kartenanteil am Log-Bereich (macOS,
+                    // siehe macDetailLayout) — sonst fixe 260 pt wie gehabt.
+                    .frame(maxHeight: flexible ? .infinity : 260)
+                    .onChange(of: body) { _, _ in
+                        if vm.followMode {
+                            withMotion(.linear(duration: 0.15)) {
+                                proxy.scrollTo("logBottom-\(title)", anchor: .bottom)
+                            }
                         }
                     }
                 }
