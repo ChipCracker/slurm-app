@@ -3,21 +3,35 @@ import Foundation
 enum SlurmParser {
     static let squeueFormat = "%i|%j|%u|%t|%P|%q|%b|%C|%m|%M|%N|%r"
 
+    // Einmal kompiliert statt pro Aufruf: gpuCount läuft pro squeue-/sinfo-Zeile
+    // im 10-s-Poll (clusterweit), das Neu-Kompilieren des Patterns war reiner
+    // CPU-Overhead im SlurmService-Actor.
+    private static let gpuRegex = try! NSRegularExpression(
+        pattern: #"gpu(?::[^:,()\s]+)?:(\d+)"#, options: [.caseInsensitive]
+    )
+
+    /// Sum of GPU counts in a GRES/TRES string ("gpu:a100:4", "gpu:2",
+    /// "gpu:a100:2,gpu:mig:1" → 4/2/3). All `gpu[:type]:N` occurrences are summed
+    /// so heterogeneous requests count fully, not just the first.
+    /// NOTE: squeue's %b is tres-PER-NODE, so a job submitted with a global
+    /// `--gpus=N` and no per-node spec can legitimately report 0 here — that is a
+    /// Slurm display limitation, not a parsing miss.
+    static func gpuCount(inGres gres: String) -> Int {
+        guard gres.range(of: "gpu", options: .caseInsensitive) != nil else { return 0 }
+        let ns = gres as NSString
+        var total = 0
+        for m in gpuRegex.matches(in: gres, range: NSRange(location: 0, length: ns.length)) {
+            total += Int(ns.substring(with: m.range(at: 1))) ?? 0
+        }
+        return total
+    }
+
     static func parseSqueue(_ text: String) -> [Job] {
         text.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
             let parts = line.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
             guard parts.count >= 11 else { return nil }
 
-            let gres = parts[6]
-            var gpus = 0
-            if gres.lowercased().contains("gpu") {
-                if let r = gres.range(of: #"gpu(?::[^:]+)?:(\d+)"#, options: .regularExpression) {
-                    let match = String(gres[r])
-                    if let digits = match.split(separator: ":").last, let n = Int(digits) {
-                        gpus = n
-                    }
-                }
-            }
+            let gpus = gpuCount(inGres: parts[6])
 
             var reason = parts.count > 11 ? parts[11].trimmingCharacters(in: .whitespacesAndNewlines) : ""
             if reason.lowercased() == "none" { reason = "" }
@@ -76,47 +90,64 @@ enum SlurmParser {
         }
     }
 
-    /// Parses `sinfo -h -o "%P|%G"` output.
-    /// Example: `p1|gpu:a100:8(S:0-1)` → ("p1", "a100", 8)
+    /// Parses **per-node** `sinfo -h -N -o "%P|%G"` output and aggregates the
+    /// partition-wide GPU total. `%G` is a per-NODE GRES count, so a partition is
+    /// the SUM over its nodes — the previous per-line parse mistook the per-node
+    /// count (e.g. 8) for the partition total. Each node appears once per
+    /// partition membership, which is exactly what we want to sum here.
+    /// One aggregated `PartitionGpu` per partition (no duplicate Identifiable ids).
     static func parsePartitionGres(_ text: String) -> [PartitionGpu] {
-        text.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
+        var order: [String] = []
+        var totals: [String: Int] = [:]
+        var types: [String: String] = [:]
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
             let parts = line.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-            guard parts.count >= 2 else { return nil }
-            let name = parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "*"))
-            if name.lowercased() == "all" { return nil }
+            guard parts.count >= 2 else { continue }
+            let name = parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "*").union(.whitespaces))
+            if name.isEmpty || name.lowercased() == "all" { continue }
 
-            let gres = parts[1]
-            guard gres.lowercased().contains("gpu") else {
-                return PartitionGpu(partition: name, gpuType: "—", totalGpus: 0)
+            if totals[name] == nil { order.append(name); totals[name] = 0 }
+            totals[name]! += gpuCount(inGres: parts[1])
+
+            // Type from "gpu:a100:8(S:0-1)" → "a100"; keep the first concrete one.
+            if types[name] == nil {
+                let cleaned = parts[1].split(separator: "(").first.map(String.init) ?? parts[1]
+                let segs = cleaned.split(separator: ":").map(String.init)
+                if segs.count >= 3, segs[0].lowercased() == "gpu" { types[name] = segs[1] }
             }
-            // strip "(S:...)"
-            let cleaned = gres.split(separator: "(").first.map(String.init) ?? gres
-            // gpu:a100:8 or gpu:8
-            let segments = cleaned.split(separator: ":").map(String.init)
-            var gpuType = "gpu"
-            var total = 0
-            if segments.count >= 3 {
-                gpuType = segments[1]
-                total = Int(segments[2]) ?? 0
-            } else if segments.count == 2 {
-                total = Int(segments[1]) ?? 0
-            }
-            return PartitionGpu(partition: name, gpuType: gpuType, totalGpus: total)
         }
+        return order.map { PartitionGpu(partition: $0, gpuType: types[$0] ?? "—", totalGpus: totals[$0] ?? 0) }
     }
+
+    /// Key-Start-Pattern für scontrol-Ausgaben — einmal kompiliert (s. gpuRegex).
+    private static let scontrolKeyStartRegex = try! NSRegularExpression(
+        pattern: #"(?:^|\s)([A-Za-z][A-Za-z0-9_/:.\-]*)="#
+    )
 
     /// Parses scontrol show job/partition output.
     /// Tokens are space-separated `Key=Value` pairs, possibly multiline.
     /// Values can contain `=` but tokens themselves don't span spaces.
     static func parseScontrolKeyValue(_ text: String) -> [String: String] {
         var out: [String: String] = [:]
-        let normalized = text.replacingOccurrences(of: "\n", with: " ")
-        let tokens = normalized.split(separator: " ", omittingEmptySubsequences: true)
-        for token in tokens {
-            guard let eqIdx = token.firstIndex(of: "=") else { continue }
-            let key = String(token[..<eqIdx])
-            let value = String(token[token.index(after: eqIdx)...])
-            if out[key] == nil { out[key] = value }
+        // scontrol prints space-separated Key=Value pairs, but some values
+        // contain spaces (Command with arguments, Reason, *Features, Comment).
+        // Splitting on spaces truncated those at the first space. Instead, per
+        // physical line, locate every `Key=` start (a key token preceded by line
+        // start or whitespace) and take the value up to the NEXT key start.
+        // Values never span a newline. `cpu=4,mem=16G` inside a value is safe:
+        // those `=` aren't preceded by whitespace, so they aren't key starts.
+        let keyStart = scontrolKeyStartRegex
+        for rawLine in text.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
+            let line = String(rawLine)
+            let ns = line as NSString
+            let matches = keyStart.matches(in: line, range: NSRange(location: 0, length: ns.length))
+            for (idx, m) in matches.enumerated() {
+                let key = ns.substring(with: m.range(at: 1))
+                let valueStart = m.range.location + m.range.length          // char after '='
+                let valueEnd = idx + 1 < matches.count ? matches[idx + 1].range.location : ns.length
+                let value = ns.substring(with: NSRange(location: valueStart, length: max(0, valueEnd - valueStart)))
+                if out[key] == nil { out[key] = value.trimmingCharacters(in: .whitespaces) }
+            }
         }
         return out
     }
@@ -124,27 +155,41 @@ enum SlurmParser {
     /// Parses `nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit --format=csv,noheader,nounits`.
     /// Matches slurm-tui's column order.
     static func parseNvidiaSmi(_ text: String) -> [GpuStat] {
-        text.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
+        // nvidia-smi emits "[N/A]" (or "N/A") for any unsupported field — common
+        // for utilization/power on MIG slices or older cards. Only the GPU index
+        // is truly required; every other field degrades to 0 instead of dropping
+        // the whole GPU row. `slot` makes multi-node rows (repeated indices)
+        // uniquely Identifiable.
+        func num(_ s: String) -> Double? {
+            let t = s.trimmingCharacters(in: .whitespaces)
+            if t == "[N/A]" || t.caseInsensitiveCompare("N/A") == .orderedSame { return 0 }
+            return Double(t)
+        }
+        var stats: [GpuStat] = []
+        var slot = 0
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
             let cols = line.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            guard cols.count >= 8,
-                  let idx = Int(cols[0]),
-                  let util = Double(cols[2]),
-                  let used = Double(cols[3]),
-                  let total = Double(cols[4]),
-                  let temp = Double(cols[5]) else { return nil }
-            let power = cols[6] == "[N/A]" ? 0 : (Double(cols[6]) ?? 0)
-            let limit = cols[7] == "[N/A]" ? 0 : (Double(cols[7]) ?? 0)
-            return GpuStat(
+            guard cols.count >= 8, let idx = Int(cols[0]) else { continue }
+            let util: Int   = Int(num(cols[2]) ?? 0)
+            let used: Int   = Int(num(cols[3]) ?? 0)
+            let total: Int  = Int(num(cols[4]) ?? 0)
+            let temp: Int   = Int(num(cols[5]) ?? 0)
+            let power: Double = num(cols[6]) ?? 0
+            let limit: Double = num(cols[7]) ?? 0
+            stats.append(GpuStat(
+                slot: slot,
                 index: idx,
                 name: cols[1],
-                utilizationPercent: Int(util),
-                memoryUsedMiB: Int(used),
-                memoryTotalMiB: Int(total),
+                utilizationPercent: util,
+                memoryUsedMiB: used,
+                memoryTotalMiB: total,
                 powerDrawW: power,
                 powerLimitW: limit,
-                temperatureC: Int(temp)
-            )
+                temperatureC: temp
+            ))
+            slot += 1
         }
+        return stats
     }
 
     /// Compute per-partition GPU usage split into four buckets:
@@ -160,7 +205,9 @@ enum SlurmParser {
         var otherNP: [String: Int] = [:]
         var otherP: [String: Int] = [:]
 
-        for job in jobs where job.isRunning && job.gpus > 0 {
+        // Include COMPLETING/SUSPENDED jobs, not just running ones — they still
+        // hold their GPUs, so excluding them under-counts usage.
+        for job in jobs where job.holdsGpuAllocation && job.gpus > 0 {
             let isOwn = !currentUser.isEmpty && job.user == currentUser
             let isPreempt = job.qos.lowercased() == "preemptible"
             switch (isOwn, isPreempt) {
@@ -172,23 +219,46 @@ enum SlurmParser {
         }
 
         return partitions.map { p in
-            // Clamp the sum to total in case squeue/sinfo briefly disagree.
-            let raw = (ownNP[p.partition] ?? 0)
-                    + (ownP[p.partition] ?? 0)
-                    + (otherNP[p.partition] ?? 0)
-                    + (otherP[p.partition] ?? 0)
-            let scale: Double = (raw > p.totalGpus && p.totalGpus > 0) ? Double(p.totalGpus) / Double(raw) : 1
-            func clip(_ v: Int) -> Int { Int((Double(v) * scale).rounded()) }
+            // Clamp the four buckets to the partition total (squeue/sinfo can
+            // briefly disagree) using largest-remainder rounding so the rendered
+            // segments sum to EXACTLY min(raw, total) — independent per-bucket
+            // rounding could otherwise push the sum past 100%.
+            let buckets = clampBuckets(
+                [ownNP[p.partition] ?? 0, ownP[p.partition] ?? 0,
+                 otherNP[p.partition] ?? 0, otherP[p.partition] ?? 0],
+                cap: p.totalGpus)
             return PartitionUsage(
                 partition: p.partition,
                 gpuType: p.gpuType,
                 totalGpus: p.totalGpus,
-                ownNonPreemptible:   clip(ownNP[p.partition]   ?? 0),
-                ownPreemptible:      clip(ownP[p.partition]    ?? 0),
-                otherNonPreemptible: clip(otherNP[p.partition] ?? 0),
-                otherPreemptible:    clip(otherP[p.partition]  ?? 0)
+                ownNonPreemptible:   buckets[0],
+                ownPreemptible:      buckets[1],
+                otherNonPreemptible: buckets[2],
+                otherPreemptible:    buckets[3]
             )
         }
+    }
+
+    /// Scale `vals` down to sum to at most `cap`, preserving the total via
+    /// largest-remainder rounding (Hamilton's method). Returns `vals` unchanged
+    /// when the sum already fits or `cap <= 0`.
+    static func clampBuckets(_ vals: [Int], cap: Int) -> [Int] {
+        let rawSum = vals.reduce(0, +)
+        guard cap > 0, rawSum > cap else { return vals }
+        let scale = Double(cap) / Double(rawSum)
+        let scaled = vals.map { Double($0) * scale }
+        var floored = scaled.map { Int($0) }   // values are non-negative → floor
+        var remainder = cap - floored.reduce(0, +)
+        let byFraction = scaled.enumerated()
+            .sorted { ($0.element - Double(Int($0.element))) > ($1.element - Double(Int($1.element))) }
+            .map { $0.offset }
+        var k = 0
+        while remainder > 0 && k < byFraction.count {
+            floored[byFraction[k]] += 1
+            remainder -= 1
+            k += 1
+        }
+        return floored
     }
 
     /// Parse `quota -s` output. Handles both single-line and split rows

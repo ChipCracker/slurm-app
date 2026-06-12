@@ -1,6 +1,9 @@
 name: SlurmApp
 options:
   bundleIdPrefix: de.cwitzl
+  # Quellsprache der App ist Deutsch (String-Katalog Localizable.xcstrings,
+  # sourceLanguage "de") → CFBundleDevelopmentRegion = de.
+  developmentLanguage: de
   deploymentTarget:
     macOS: "14.0"
     iOS: "26.0"

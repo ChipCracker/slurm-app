@@ -56,16 +56,29 @@ class Channel {
     }
     
     func exec(command: String) throws {
+        // libssh2 wants the BYTE length of the UTF-8 command buffer, not the
+        // grapheme count. `String.count` counts grapheme clusters, so any
+        // non-ASCII character (e.g. an umlaut in a log path) would truncate the
+        // command by one byte per multi-byte scalar. requestPty above already
+        // uses `.utf8.count` correctly.
         let code = libssh2_channel_process_startup(cChannel,
                                                    Channel.exec,
                                                    UInt32(Channel.exec.count),
                                                    command,
-                                                   UInt32(command.count))
+                                                   UInt32(command.utf8.count))
         try SSHError.check(code: code, session: cSession)
     }
-    
+
     func readData() -> ReadWriteProcessor.ReadResult {
         let result = libssh2_channel_read_ex(cChannel, 0, &readBuffer, Channel.readBufferSize)
+        return ReadWriteProcessor.processRead(result: result, buffer: &readBuffer, session: cSession)
+    }
+
+    /// Reads from the channel's **stderr** stream (extended data id 1). libssh2
+    /// keeps stdout (stream 0) and stderr in separate buffers; `readData()` only
+    /// drains stdout, so without this a failed command loses its error message.
+    func readError() -> ReadWriteProcessor.ReadResult {
+        let result = libssh2_channel_read_ex(cChannel, SSH_EXTENDED_DATA_STDERR, &readBuffer, Channel.readBufferSize)
         return ReadWriteProcessor.processRead(result: result, buffer: &readBuffer, session: cSession)
     }
     

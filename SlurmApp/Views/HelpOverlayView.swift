@@ -47,8 +47,7 @@ struct HelpOverlayView: View {
                     .font(.title3)
                     .frame(width: 32, height: 32)
             }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
+            .slurmyGlassCircleButton()
             .keyboardShortcut(.cancelAction)
             .help("Schliessen (Esc)")
         }
@@ -58,27 +57,29 @@ struct HelpOverlayView: View {
     private func sectionCard(_ category: Shortcut.Category) -> some View {
         let rows = Shortcut.helpRows(in: category)
         return VStack(alignment: .leading, spacing: 8) {
-            Text(category.rawValue.uppercased())
+            Text(category.label.uppercased())
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
             ForEach(rows, id: \.humanKey) { r in
                 staticRow(key: r.humanKey, desc: r.description)
             }
+            // String-Parameter lokalisieren nicht automatisch → String(localized:).
             if category == .jobs {
-                staticRow(key: "↑/↓", desc: "Job auswählen (Tabelle)")
-                staticRow(key: "⇧ + ↑/↓", desc: "Mehrere Jobs auswählen")
-                staticRow(key: "⌘A", desc: "Alle Jobs auswählen")
-                staticRow(key: "Leertaste", desc: "Job markieren / Modal öffnen-schliessen")
-                staticRow(key: "↑/↓", desc: "Inspector-Item wählen (Pane fokussiert)")
-                staticRow(key: "Tab", desc: "Pane wechseln")
+                staticRow(key: "↑/↓", desc: String(localized: "Job auswählen (Tabelle)"))
+                staticRow(key: "⇧ + ↑/↓", desc: String(localized: "Mehrere Jobs auswählen"))
+                staticRow(key: "⌘A", desc: String(localized: "Alle Jobs auswählen"))
+                staticRow(key: String(localized: "Leertaste"), desc: String(localized: "Job markieren / Modal öffnen-schliessen"))
+                staticRow(key: "↑/↓", desc: String(localized: "Inspector-Item wählen (Pane fokussiert)"))
+                staticRow(key: "Tab", desc: String(localized: "Pane wechseln"))
             }
             if category == .detail {
-                staticRow(key: "Leertaste", desc: "Log vergrössert öffnen/schliessen")
-                staticRow(key: "Klick", desc: "Log-Fenster vergrössert öffnen")
+                staticRow(key: String(localized: "Leertaste"), desc: String(localized: "Log vergrössert öffnen/schliessen"))
+                staticRow(key: String(localized: "Klick"), desc: String(localized: "Log-Fenster vergrössert öffnen"))
             }
         }
         .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // Opake Content-Karte auf dem Glas-Overlay (kein Glas-auf-Glas).
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Theme.hairline, lineWidth: 0.5)
@@ -91,7 +92,7 @@ struct HelpOverlayView: View {
                 .font(.callout.monospaced().bold())
                 .foregroundColor(Theme.accent)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 6))
                 .frame(minWidth: 56, alignment: .center)
             Text(desc)
                 .font(.callout)

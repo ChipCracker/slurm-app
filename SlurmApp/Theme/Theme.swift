@@ -12,11 +12,12 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .system: return "Automatisch"
-        case .light:  return "Hell"
-        case .dark:   return "Dunkel"
+        case .system: return String(localized: "Automatisch")
+        case .light:  return String(localized: "Hell")
+        case .dark:   return String(localized: "Dunkel")
         }
     }
 
@@ -50,21 +51,32 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .blue:     return "Blau"
-        case .indigo:   return "Indigo"
-        case .teal:     return "Türkis"
-        case .green:    return "Grün"
-        case .purple:   return "Violett"
-        case .orange:   return "Orange"
-        case .rose:     return "Rosé"
-        case .graphite: return "Graphit"
+        case .blue:     return String(localized: "Blau")
+        case .indigo:   return String(localized: "Indigo")
+        case .teal:     return String(localized: "Türkis")
+        case .green:    return String(localized: "Grün")
+        case .purple:   return String(localized: "Violett")
+        case .orange:   return String(localized: "Orange")
+        case .rose:     return String(localized: "Rosé")
+        case .graphite: return String(localized: "Graphit")
         }
     }
 
-    var accent: Color {
-        switch self {
+    /// Cached lookup: `Color(light:dark:)` allocates a fresh dynamic platform
+    /// color (NSColor/UIColor provider + closures) on every call, so each
+    /// theme's accent is built exactly ONCE. This also keeps the accent
+    /// value-stable across body passes, so SwiftUI's diffing doesn't see a
+    /// "new" color on every render.
+    var accent: Color { Self.accentCache[self] ?? Self.makeAccent(self) }
+
+    private static let accentCache: [AppTheme: Color] =
+        Dictionary(uniqueKeysWithValues: AppTheme.allCases.map { ($0, AppTheme.makeAccent($0)) })
+
+    private static func makeAccent(_ theme: AppTheme) -> Color {
+        switch theme {
         case .blue:
             return Color(light: Color(red: 0.13, green: 0.40, blue: 0.86),
                          dark:  Color(red: 0.49, green: 0.65, blue: 1.00))
@@ -117,108 +129,105 @@ extension Color {
 }
 
 enum Theme {
-    static let background = Color(
-        light: Color(red: 0.95, green: 0.96, blue: 0.98),
-        dark:  Color(red: 0.10, green: 0.11, blue: 0.16))
-    static let surface = Color(
-        light: Color(red: 1.00, green: 1.00, blue: 1.00),
-        dark:  Color(red: 0.14, green: 0.15, blue: 0.22))
-    static let surfaceElevated = Color(
-        light: Color(red: 0.93, green: 0.95, blue: 0.98),
-        dark:  Color(red: 0.17, green: 0.19, blue: 0.27))
-    static let border = Color(
-        light: Color(red: 0.84, green: 0.86, blue: 0.91),
-        dark:  Color(red: 0.22, green: 0.25, blue: 0.35))
-    static let textPrimary = Color(
-        light: Color(red: 0.11, green: 0.13, blue: 0.20),
-        dark:  Color(red: 0.79, green: 0.84, blue: 0.95))
-    static let textSecondary = Color(
-        light: Color(red: 0.38, green: 0.43, blue: 0.54),
-        dark:  Color(red: 0.55, green: 0.61, blue: 0.78))
-    /// Driven by the selected `AppTheme` so a theme switch recolors the whole
-    /// app. Computed (not a stored constant) so every `body` re-render — which
-    /// the App triggers on change — picks up the new accent.
-    static var accent: Color { AppTheme.current.accent }
-    static let success = Color(
-        light: Color(red: 0.24, green: 0.58, blue: 0.20),
-        dark:  Color(red: 0.62, green: 0.84, blue: 0.46))
-    static let warning = Color(
-        light: Color(red: 0.72, green: 0.50, blue: 0.08),
-        dark:  Color(red: 0.94, green: 0.78, blue: 0.50))
-    static let danger = Color(
-        light: Color(red: 0.81, green: 0.22, blue: 0.26),
-        dark:  Color(red: 0.95, green: 0.50, blue: 0.54))
-    static let purple = Color(
-        light: Color(red: 0.47, green: 0.31, blue: 0.80),
-        dark:  Color(red: 0.74, green: 0.58, blue: 0.98))
-    static let cyan = Color(
-        light: Color(red: 0.08, green: 0.52, blue: 0.60),
-        dark:  Color(red: 0.49, green: 0.85, blue: 0.91))
+    /// Cache der aufgelösten Palette. Eine Auflösung pro Zugriff wäre teuer
+    /// (UserDefaults-Reads + Struct-Kopie + für das Standard-Thema eine frische
+    /// dynamische Accent-Color — bei ~470 `Theme.*`-Reads pro Jobs-Render
+    /// messbarer Main-Thread-Overhead und nie wert-gleiche Colors fürs
+    /// SwiftUI-Diffing). Invalidiert über `UserDefaults.didChangeNotification`
+    /// (deckt colorTheme, accentTheme UND die Override-Revision ab); der
+    /// App-Root liest die @AppStorage-Keys weiterhin, damit der View-Baum bei
+    /// einem Wechsel neu rendert (siehe SlurmApp.swift). Main-thread-only wie
+    /// alle `Theme`-Zugriffe.
+    private static var cachedPalette: ThemePalette?
+    private static let cacheInvalidator: NSObjectProtocol =
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: UserDefaults.standard,
+            queue: .main
+        ) { _ in Theme.cachedPalette = nil }
 
-    /// Text/glyph color that sits on top of an `accent`-filled surface (e.g. a
-    /// primary button). Resolves to a legible contrast in each appearance.
-    static let onAccent = Color(
-        light: .white,
-        dark:  Color(red: 0.07, green: 0.08, blue: 0.13))
+    /// The resolved palette: the active colour theme + the accent override (for
+    /// the standard theme). Resolved once and cached (see `cachedPalette`).
+    static var palette: ThemePalette {
+        _ = cacheInvalidator // Observer beim ersten Zugriff registrieren.
+        if let p = cachedPalette { return p }
+        let theme = AppColorTheme.current
+        var p = theme.palette
+        if theme.allowsAccentOverride { p.accent = AppTheme.current.accent }
+        cachedPalette = p
+        return p
+    }
 
-    /// Hairline color for dividers and 0.5pt strokes — adapts so separators
-    /// stay visible in light mode (a `.white` hairline would vanish on white).
-    static let hairline = Color(
-        light: Color(red: 0.00, green: 0.00, blue: 0.00).opacity(0.10),
-        dark:  Color(red: 1.00, green: 1.00, blue: 1.00).opacity(0.10))
+    static var background: Color      { palette.background }
+    static var surface: Color         { palette.surface }
+    static var surfaceElevated: Color { palette.surfaceElevated }
+    static var border: Color          { palette.border }
+    static var textPrimary: Color     { palette.textPrimary }
+    static var textSecondary: Color   { palette.textSecondary }
+    /// A user accent override (Settings → Eigene Farben) wins over the theme.
+    static var accent: Color          { ThemeOverrideStore.shared.color(for: .accent) ?? palette.accent }
+    static var success: Color         { palette.success }
+    static var warning: Color         { palette.warning }
+    static var danger: Color          { palette.danger }
+    static var purple: Color          { palette.purple }
+    static var cyan: Color            { palette.cyan }
+
+    /// Text/glyph color that sits on top of an `accent`-filled surface.
+    static var onAccent: Color        { palette.onAccent }
+    /// Hairline color for dividers and 0.5pt strokes.
+    static var hairline: Color        { palette.hairline }
+
+    /// Gradient behind the LEGACY `GlassPanel` fallback (macOS 14/15) —
+    /// themeable; mirrors the pre-Liquid-Glass look.
+    static var glassGradient: [Color] {
+        let p = palette
+        return p.glassGradient
+            ?? [accent.opacity(0.20), p.purple.opacity(0.12), p.background.opacity(0.4)]
+    }
+
+    /// Einzel-Tönung für natives Liquid Glass (macOS 26+/iOS 26): echtes Glas
+    /// liefert Tiefe/Blur selbst, deshalb kollabiert der 3-Stop-`glassGradient`
+    /// zu einem subtilen Akzent-Tint. Über `accent` bleibt das Glas voll
+    /// Theme-/Override-reaktiv; opinionated Themes können via
+    /// `ThemePalette.glassTint` überschreiben. Nicht mit `surface`/`background`
+    /// tinten — das macht das Glas wieder opak.
+    static var glassTint: Color {
+        palette.glassTint ?? accent.opacity(0.14)
+    }
 
     static func stateColor(_ state: String) -> Color {
+        // A user override for this status slot wins over the theme colour.
+        if let slot = ThemeSlot.forJobState(state),
+           let c = ThemeOverrideStore.shared.color(for: slot) {
+            return c
+        }
+        let p = palette // resolve once, read fields from the local
         switch state.uppercased() {
-        case "R", "RUNNING":         return success
-        case "PD", "PENDING":        return warning
-        case "CG", "COMPLETING":     return cyan
-        case "CD", "COMPLETED":      return textSecondary
+        case "R", "RUNNING":         return p.success
+        case "PD", "PENDING":        return p.warning
+        case "CG", "COMPLETING":     return p.cyan
+        case "CD", "COMPLETED":      return p.textSecondary
         case "F", "FAILED",
              "CA", "CANCELLED",
              "TO", "TIMEOUT",
-             "NF", "NODE_FAIL":      return danger
-        case "S", "SUSPENDED":       return purple
-        default:                     return textSecondary
+             "NF", "NODE_FAIL":      return p.danger
+        case "S", "SUSPENDED":       return p.purple
+        default:                     return p.textSecondary
         }
     }
 
-    /// Distinct, theme-neutral hues for QoS pills — chosen to read in both
-    /// light and dark and to stay clear of the status palette (so a QoS never
-    /// looks like a "failed" badge).
-    private static let qosPalette: [Color] = [
-        Color(light: Color(red: 0.47, green: 0.31, blue: 0.80),  // violet
-              dark:  Color(red: 0.74, green: 0.58, blue: 0.98)),
-        Color(light: Color(red: 0.08, green: 0.52, blue: 0.60),  // teal
-              dark:  Color(red: 0.49, green: 0.85, blue: 0.91)),
-        Color(light: Color(red: 0.72, green: 0.45, blue: 0.05),  // amber
-              dark:  Color(red: 0.95, green: 0.76, blue: 0.40)),
-        Color(light: Color(red: 0.16, green: 0.50, blue: 0.78),  // azure
-              dark:  Color(red: 0.52, green: 0.74, blue: 1.00)),
-        Color(light: Color(red: 0.78, green: 0.24, blue: 0.52),  // magenta
-              dark:  Color(red: 1.00, green: 0.58, blue: 0.80)),
-        Color(light: Color(red: 0.27, green: 0.55, blue: 0.30),  // green
-              dark:  Color(red: 0.60, green: 0.86, blue: 0.62)),
-        Color(light: Color(red: 0.80, green: 0.40, blue: 0.16),  // orange
-              dark:  Color(red: 0.98, green: 0.66, blue: 0.42)),
-        Color(light: Color(red: 0.34, green: 0.34, blue: 0.74),  // indigo
-              dark:  Color(red: 0.66, green: 0.66, blue: 1.00)),
-        Color(light: Color(red: 0.56, green: 0.42, blue: 0.28),  // brown
-              dark:  Color(red: 0.82, green: 0.68, blue: 0.50)),
-        Color(light: Color(red: 0.30, green: 0.44, blue: 0.52),  // slate
-              dark:  Color(red: 0.62, green: 0.76, blue: 0.86)),
-    ]
-
     /// Stable per-QoS color so each QoS name always maps to the same hue across
-    /// launches (uses a deterministic djb2 hash, NOT Swift's per-process
-    /// randomized `hashValue`).
+    /// launches (deterministic djb2 hash, NOT Swift's randomized `hashValue`).
+    /// Indexes into the active theme's QoS palette.
     static func qosColor(_ qos: String) -> Color {
+        let pal = palette.qosPalette
         let key = qos.lowercased().trimmingCharacters(in: .whitespaces)
-        guard !key.isEmpty else { return textSecondary }
+        guard !key.isEmpty, !pal.isEmpty else { return textSecondary }
         var hash: UInt64 = 5381
         for scalar in key.unicodeScalars {
             hash = (hash &* 33) &+ UInt64(scalar.value)
         }
-        return qosPalette[Int(hash % UInt64(qosPalette.count))]
+        return pal[Int(hash % UInt64(pal.count))]
     }
 
     static func utilizationColor(_ ratio: Double) -> Color {
@@ -240,29 +249,13 @@ enum Theme {
         }
     }
 
-    // GPU-allocation overlay colors (mirrors slurm-tui's "earth tones"
-    // palette so users see the same coding across both clients). Slightly
-    // deepened in light mode so the segments read on a white surface.
-    static let ownNonPreempt = Color(
-        light: Color(red: 0.45, green: 0.58, blue: 0.36),
-        dark:  Color(red: 0.64, green: 0.75, blue: 0.55)) // sage green
-    static let ownPreempt = Color(
-        light: Color(red: 0.58, green: 0.72, blue: 0.42),
-        dark:  Color(red: 0.76, green: 0.86, blue: 0.60)) // light beige-green
-    // "Not mine" == occupied by others → red, so a glance reads "belegt".
-    // Two shades mirror the own greens: strong red = non-preemptible, lighter
-    // red = preemptible (others' jobs you could in principle preempt).
-    static let otherNonPreempt = Color(
-        light: Color(red: 0.80, green: 0.27, blue: 0.24),
-        dark:  Color(red: 0.86, green: 0.40, blue: 0.36)) // strong red
-    static let otherPreempt = Color(
-        light: Color(red: 0.89, green: 0.50, blue: 0.46),
-        dark:  Color(red: 0.90, green: 0.58, blue: 0.53)) // light red
-    // Free / available GPUs — a calm neutral so the empty part of the bar reads
-    // as "verfügbar" without competing with the green (mine) / red (others) tones.
-    static let gpuFree = Color(
-        light: Color(red: 0.71, green: 0.75, blue: 0.82),
-        dark:  Color(red: 0.32, green: 0.36, blue: 0.42)) // slate gray
+    // GPU-allocation overlay colors (slurm-tui "earth tones"): green = mine,
+    // red = others, neutral = free. Now theme-driven (see ThemePalette).
+    static var ownNonPreempt: Color   { palette.ownNonPreempt }
+    static var ownPreempt: Color      { palette.ownPreempt }
+    static var otherNonPreempt: Color { palette.otherNonPreempt }
+    static var otherPreempt: Color    { palette.otherPreempt }
+    static var gpuFree: Color         { palette.gpuFree }
 }
 
 struct CardStyle: ViewModifier {

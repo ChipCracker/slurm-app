@@ -15,10 +15,22 @@ final class JobsViewModel: ObservableObject {
     @Published var partitionDetails: [String: [String: String]] = [:]
     @Published var loading = false
     @Published var error: String?
-    @Published var allUsers: Bool = false
-    @Published var runningOnly: Bool = false
-    @Published var search: String = ""
+    @Published var allUsers: Bool = false { didSet { if oldValue != allUsers { recomputeFiltered() } } }
+    @Published var runningOnly: Bool = false { didSet { if oldValue != runningOnly { recomputeFiltered() } } }
+    @Published var search: String = "" { didSet { if oldValue != search { recomputeFiltered() } } }
     @Published var initialFetchDone: Bool = false
+
+    // MARK: – Derived-row cache (perf)
+    // `filtered()` + the filter-bar stats used to be recomputed many times per
+    // render and on every keystroke (O(n) each, several passes). They are now
+    // computed ONCE whenever an input actually changes and served from a cache.
+    struct Stats: Equatable { var running = 0; var pending = 0; var gpus = 0 }
+    private(set) var filteredJobs: [Job] = []
+    private(set) var stats = Stats()
+    /// Bumped on every recompute so the view's `visibleJobs` memo invalidates.
+    private(set) var filteredSignature = 0
+    private var visibleCacheKey: Int?
+    private var visibleCache: [Job] = []
     /// Per-resource in-flight flags so each slow stats card shimmers until ITS
     /// own data lands — the job list (and `initialFetchDone`) finishes much
     /// earlier and must not stop these from showing a loading state.
@@ -31,7 +43,6 @@ final class JobsViewModel: ObservableObject {
     /// ranking is cached to disk in between (and can be refreshed manually).
     static let hoursRefreshInterval: TimeInterval = 1800   // 30 min
 
-    init() { loadHoursCache(); loadQuotaCache() }
     /// When each partition's nodes/details were last fetched — used to skip a
     /// re-fetch when the same partition is re-opened within `partitionCacheTTL`.
     private var lastPartitionFetch: [String: Date] = [:]
@@ -41,10 +52,20 @@ final class JobsViewModel: ObservableObject {
     /// statt erneut per SSH zu laden, solange die Daten frisch sind.
     private(set) var lastFullRefresh: Date = .distantPast
     var isStale: Bool { Date().timeIntervalSince(lastFullRefresh) > 10 }
-    /// Been away long enough that the SSH link probably died (sleep/background)
-    /// — used to proactively reconnect on foreground instead of hanging on a
-    /// half-open socket until the timeout.
-    var connectionMaybeStale: Bool { Date().timeIntervalSince(lastFullRefresh) > 30 }
+    /// Zeitpunkt, zu dem die App den Vordergrund verlassen hat (scenePhase
+    /// != .active). Ein reiner Sektionswechsel (Settings/Bookmarks) ändert die
+    /// scenePhase nicht — die warme SSH-Session bleibt dann unangetastet.
+    var leftForegroundAt: Date?
+    /// Been away (backgrounded/asleep) long enough that the SSH link probably
+    /// died — used to proactively reconnect on foreground instead of hanging on
+    /// a half-open socket until the timeout. Based on actual background time,
+    /// NOT on data age: merely sitting in another section must not tear down a
+    /// healthy session with a full TCP/handshake/auth cycle. (macOS sleep is
+    /// additionally covered by AppState's wake observers.)
+    var connectionMaybeStale: Bool {
+        guard let away = leftForegroundAt else { return false }
+        return Date().timeIntervalSince(away) > 30
+    }
 
     // Persistierte UI-Auswahl + Sortierung, damit sie einen Sektionswechsel
     // überleben (JobsView wird dabei neu aufgebaut). Bewusst kein @Published:
@@ -54,8 +75,21 @@ final class JobsViewModel: ObservableObject {
     var savedSortOrder: [KeyPathComparator<Job>]?
 
     private weak var appState: AppState?
+    /// Die persistierten GPU-Stunden-/Quota-Caches werden erst in `bind`
+    /// geladen (nicht im init): Erst mit AppState ist der Verbindungs-Scope
+    /// (user@host:port) bekannt — Daten eines anderen Clusters/Accounts
+    /// dürfen nie als frische Werte erscheinen.
+    private var diskCachesLoaded = false
 
-    func bind(_ appState: AppState) { self.appState = appState }
+    func bind(_ appState: AppState) {
+        self.appState = appState
+        recomputeFiltered()   // username now known → keep the filter cache honest
+        if !diskCachesLoaded {
+            diskCachesLoaded = true
+            loadHoursCache()
+            loadQuotaCache()
+        }
+    }
 
     /// Fetch (and cache) details + node list for one partition. Cheap — used
     /// when the user expands a partition in the Inspector's GPU-allocation
@@ -78,41 +112,146 @@ final class JobsViewModel: ObservableObject {
         lastPartitionFetch[name] = Date()
     }
 
-    /// Jobs visible in the table after applying the user filter.
+    /// Jobs after applying only the user filter (allUsers). Drives the
+    /// filter-bar stats. Cheap recompute keeps this honest.
     var jobs: [Job] {
-        guard let me = appState?.credentials?.username else { return allJobs }
-        return allUsers ? allJobs : allJobs.filter { $0.user == me }
+        guard let me = appState?.credentials?.username, !allUsers else { return allJobs }
+        return allJobs.filter { $0.user == me }
     }
 
-    func filtered() -> [Job] {
-        var base = jobs
-        if runningOnly { base = base.filter(\.isRunning) }
-        guard !search.isEmpty else { return base }
-        return base.filter { j in
-            j.jobId.localizedCaseInsensitiveContains(search) ||
-            j.name.localizedCaseInsensitiveContains(search) ||
-            j.user.localizedCaseInsensitiveContains(search) ||
-            j.partition.localizedCaseInsensitiveContains(search) ||
-            j.state.localizedCaseInsensitiveContains(search)
+    /// Cached filtered list (user + runningOnly + search). Recomputed only when
+    /// an input changes, not per render/keystroke.
+    func filtered() -> [Job] { filteredJobs }
+
+    /// Recompute the cached filtered list and stats. Call when allJobs or the
+    /// username changes (the filter toggles trigger it via their didSet).
+    func recomputeFiltered() {
+        let me = appState?.credentials?.username
+        let base = (allUsers || me == nil) ? allJobs : allJobs.filter { $0.user == me }
+
+        var s = Stats()
+        for j in base {
+            if j.isRunning { s.running += 1; s.gpus += j.gpus }
+            else if j.isPending { s.pending += 1 }
         }
+        stats = s
+
+        var result = base
+        if runningOnly { result = result.filter(\.isRunning) }
+        if !search.isEmpty {
+            // Lowercase the query once and match against lowered fields instead
+            // of 5× localizedCaseInsensitiveContains per job.
+            let q = search.lowercased()
+            result = result.filter { j in
+                j.jobId.lowercased().contains(q) || j.name.lowercased().contains(q) ||
+                j.user.lowercased().contains(q) || j.partition.lowercased().contains(q) ||
+                j.state.lowercased().contains(q)
+            }
+        }
+        filteredJobs = result
+        filteredSignature &+= 1
+        visibleCacheKey = nil   // invalidate the sort memo
     }
 
-    func refresh() async {
+    /// Sorted + running-first-partitioned visible rows, memoized so the table,
+    /// height calc, cursor math and stats don't each re-sort within one render.
+    func visibleJobs(sortOrder: [KeyPathComparator<Job>], runningFirst: Bool) -> [Job] {
+        var hasher = Hasher()
+        hasher.combine(filteredSignature)
+        hasher.combine(runningFirst)
+        for c in sortOrder { hasher.combine(c.keyPath); hasher.combine(c.order) }
+        let key = hasher.finalize()
+        if key == visibleCacheKey { return visibleCache }
+        var sorted = filteredJobs.sorted(using: sortOrder)
+        if runningFirst { sorted = sorted.filter(\.isRunning) + sorted.filter { !$0.isRunning } }
+        visibleCacheKey = key
+        visibleCache = sorted
+        return sorted
+    }
+
+    // MARK: – Spaltenbreiten-Memo (perf)
+    // `ColumnSizing` lief früher bei JEDEM Body-Durchlauf über alle sichtbaren
+    // Zeilen (≈12 O(n)-String-Pässe pro Tastendruck/Cursor-Schritt). Die
+    // Breiten hängen nur von der gefilterten Menge (Sortierung ändert sie
+    // nicht) und den Zeichenbreiten-Metriken ab → Memo über filteredSignature.
+    private var sizingCacheKey: Int?
+    private var sizingCache: ColumnSizing?
+
+    fileprivate func columnSizing(skeleton: [Job], propPx: CGFloat, monoPx: CGFloat) -> ColumnSizing {
+        var hasher = Hasher()
+        hasher.combine(filteredJobs.isEmpty ? -1 : filteredSignature)
+        hasher.combine(propPx)
+        hasher.combine(monoPx)
+        let key = hasher.finalize()
+        if key == sizingCacheKey, let cached = sizingCache { return cached }
+        let sizing = ColumnSizing(
+            jobs: filteredJobs.isEmpty ? skeleton : filteredJobs,
+            propPx: propPx, monoPx: monoPx
+        )
+        sizingCacheKey = key
+        sizingCache = sizing
+        return sizing
+    }
+
+    /// Guards against overlapping refreshes (the initial `.task`, the scenePhase
+    /// catch-up and a manual refresh can all fire on section re-entry — without
+    /// this they enqueued duplicate squeue/sreport/quota fetches).
+    private var refreshing = false
+    /// Partition GPU totals are cluster-static; cache them so the 10s poll
+    /// doesn't re-run `sinfo -N` every tick (only `squeue` actually changes).
+    private var cachedParts: [PartitionGpu] = []
+    private var lastPartsFetch: Date = .distantPast
+    static let partsRefreshInterval: TimeInterval = 300   // 5 min
+
+    /// `silent` (used by the 10s poll) skips the `loading` toggle so a background
+    /// tick doesn't trigger two extra full-body passes nothing displays.
+    func refresh(silent: Bool = false) async {
         guard let slurm = appState?.slurm else { return }
+        guard !refreshing else { return }
+        refreshing = true; defer { refreshing = false }
         let me = appState?.credentials?.username ?? ""
-        loading = true
-        defer { loading = false }
+        if !silent { loading = true }
+        defer { if !silent { loading = false } }
+        // Nur der stille 10s-Hintergrund-Tick ist ein Poll — alle Nutzer-Pfade
+        // (Toolbar-Refresh, Pull-to-Refresh, Post-Action-Refresh) rufen
+        // silent=false und springen in der SSH-Queue vor wartende Poll-Ticks.
+        let priority: SSHCommandPriority = silent ? .poll : .userInitiated
         do {
-            let jobsList = try await slurm.fetchJobs(allUsers: true, currentUser: "")
-            let parts = try await slurm.fetchPartitionGpus()
-            self.allJobs = jobsList
-            self.gpuUsage = SlurmParser
+            let jobsList = try await slurm.fetchJobs(allUsers: true, currentUser: "", priority: priority)
+            // Refetch the static partition GRES at most every 5 min, not per tick.
+            let parts: [PartitionGpu]
+            if cachedParts.isEmpty || Date().timeIntervalSince(lastPartsFetch) > Self.partsRefreshInterval {
+                parts = try await slurm.fetchPartitionGpus(priority: priority)
+                cachedParts = parts
+                lastPartsFetch = Date()
+            } else {
+                parts = cachedParts
+            }
+            // Publish only on real change — on a quiet cluster the output is
+            // usually identical, so this avoids a full JobsView re-render cascade
+            // every tick. Job/PartitionUsage are Equatable.
+            if jobsList != allJobs {
+                allJobs = jobsList
+                recomputeFiltered()
+            }
+            let usage = SlurmParser
                 .computeUsage(jobs: jobsList, partitions: parts, currentUser: me)
                 .sorted { $0.partition < $1.partition }
-            self.error = nil
-            self.lastFullRefresh = Date()
+            if usage != gpuUsage { gpuUsage = usage }
+            if error != nil { error = nil }
+            lastFullRefresh = Date()
+            appState?.reportConnectionHealthy()
         } catch {
+            // Strukturierte Cancellation (Sektionswechsel, scenePhase-Flip via
+            // Cmd-Tab/Minimieren) ist KEIN Verbindungsfehler: Die SSH-Schicht
+            // wirft jetzt CancellationError für abgebrochene Tasks — weder das
+            // englische System-Banner zeigen noch den Status auf „instabil"
+            // degradieren. Early return ist sicher: Die defers setzen
+            // refreshing/loading zurück, alles danach ist für einen
+            // abgebrochenen Tick irrelevant.
+            if error is CancellationError || Task.isCancelled { return }
             self.error = error.localizedDescription
+            appState?.reportConnectionTrouble(error.localizedDescription)
         }
 
         // Jobs + partitions are in → stop the table skeleton NOW, before the
@@ -138,16 +277,36 @@ final class JobsViewModel: ObservableObject {
     }
 
     /// (Re)load the GPU-hours ranking and refresh the on-disk cache. Called on
-    /// the 30-min cadence from `refresh()` and directly by the card's manual
-    /// refresh button (which always forces a fresh `sreport`).
-    func reloadGpuHours() async {
+    /// the 30-min cadence from `refresh()` and by the card's manual refresh
+    /// button (`force: true` erzwingt einen frischen `sreport`).
+    ///
+    /// Teilt sich den verbindungsgebundenen Cache mit dem GPU-Hours-Sheet
+    /// (AppState, Key „thisYear"): Beide Oberflächen zeigen denselben
+    /// Jahres-`sreport` — wer zuerst lädt, bedient den anderen, statt das
+    /// schwerste Read-Kommando der App doppelt auf die serielle SSH-Queue
+    /// zu legen (und für denselben Zeitraum abweichende Ranglisten zu zeigen).
+    func reloadGpuHours(force: Bool = false) async {
         guard let slurm = appState?.slurm else { return }
+        let cacheKey = RangePreset.thisYear.rawValue
+        if !force,
+           let cached = appState?.cachedGpuHoursEntry(forKey: cacheKey),
+           Date().timeIntervalSince(cached.at) < Self.hoursRefreshInterval {
+            gpuHours = Array(cached.entries.prefix(10))
+            lastHoursFetch = cached.at
+            hoursLoading = false
+            persistHoursCache()
+            return
+        }
         hoursLoading = true
         defer { hoursLoading = false }
-        if let hours = try? await slurm.fetchGpuHours(topN: 10) {
-            self.gpuHours = hours
+        // Volle Liste holen (`topN` wird ohnehin client-seitig angewendet),
+        // damit der geteilte Cache auch das Sheet (alle Nutzer + Suche)
+        // bedienen kann; die Card zeigt weiterhin die Top 10.
+        if let hours = try? await slurm.fetchGpuHours(topN: 0) {
+            self.gpuHours = Array(hours.prefix(10))
             self.lastHoursFetch = Date()
             persistHoursCache()
+            appState?.storeGpuHours(hours, forKey: cacheKey)
         }
     }
 
@@ -172,11 +331,17 @@ final class JobsViewModel: ObservableObject {
     private struct HoursCache: Codable {
         let entries: [GpuHoursEntry]
         let fetchedAt: Date
+        /// Verbindungs-Scope (user@host:port) — ein nach Cluster-/Account-
+        /// Wechsel geladener Cache eines anderen Clusters wird verworfen.
+        /// Alte Payloads ohne `scope` scheitern am Decode und werden ebenso
+        /// verworfen (gewollte Migration).
+        let scope: String
     }
 
     private func loadHoursCache() {
         guard let data = UserDefaults.standard.data(forKey: Self.hoursCacheKey),
               let cache = try? JSONDecoder().decode(HoursCache.self, from: data),
+              cache.scope == appState?.connectionCacheScope,
               !cache.entries.isEmpty else { return }
         gpuHours = cache.entries
         lastHoursFetch = cache.fetchedAt
@@ -184,7 +349,8 @@ final class JobsViewModel: ObservableObject {
     }
 
     private func persistHoursCache() {
-        let cache = HoursCache(entries: gpuHours, fetchedAt: lastHoursFetch)
+        guard let scope = appState?.connectionCacheScope else { return }
+        let cache = HoursCache(entries: gpuHours, fetchedAt: lastHoursFetch, scope: scope)
         if let data = try? JSONEncoder().encode(cache) {
             UserDefaults.standard.set(data, forKey: Self.hoursCacheKey)
         }
@@ -198,11 +364,14 @@ final class JobsViewModel: ObservableObject {
     private struct QuotaCache: Codable {
         let quotas: [DiskQuota]
         let fetchedAt: Date
+        /// Siehe HoursCache.scope — bindet den Cache an die Verbindung.
+        let scope: String
     }
 
     private func loadQuotaCache() {
         guard let data = UserDefaults.standard.data(forKey: Self.quotaCacheKey),
               let cache = try? JSONDecoder().decode(QuotaCache.self, from: data),
+              cache.scope == appState?.connectionCacheScope,
               !cache.quotas.isEmpty else { return }
         diskQuotas = cache.quotas
         lastQuotaFetch = cache.fetchedAt
@@ -210,7 +379,8 @@ final class JobsViewModel: ObservableObject {
     }
 
     private func persistQuotaCache() {
-        let cache = QuotaCache(quotas: diskQuotas, fetchedAt: lastQuotaFetch)
+        guard let scope = appState?.connectionCacheScope else { return }
+        let cache = QuotaCache(quotas: diskQuotas, fetchedAt: lastQuotaFetch, scope: scope)
         if let data = try? JSONEncoder().encode(cache) {
             UserDefaults.standard.set(data, forKey: Self.quotaCacheKey)
         }
@@ -222,6 +392,7 @@ final class JobsViewModel: ObservableObject {
     func loadMockIfRequested() -> Bool {
         guard ProcessInfo.processInfo.environment["SLURMIOS_UIMOCK"] == "1" else { return false }
         allJobs = Self.mockJobs
+        recomputeFiltered()
         gpuUsage = Self.mockUsage
         gpuHours = Self.mockGpuHours
         diskQuotas = Self.mockDiskQuotas
@@ -339,12 +510,28 @@ struct JobsView: View {
     #if os(iOS)
     @State private var selectionMode = false               // iOS Auswahl-Modus
     #endif
-    @State private var partitionCycleIndex: Int = 0
     /// +1 = last move was downward, -1 = upward. Space-mark and other
     /// auto-advance actions use this so they keep walking in the user's
     /// current direction instead of always going down.
     @State private var lastDirection: Int = 1
     @FocusState private var focusedPane: Pane?
+    /// Fokus-Binding des Suchfelds — Ziel des ⌘F-Shortcuts (`Shortcut.focusSearch`)
+    /// und Wächter, damit ⌘A im Suchfeld das normale „Alles auswählen" bleibt.
+    @FocusState private var searchFocused: Bool
+    #if os(iOS)
+    /// Snapshot des gepushten Jobs: bleibt erhalten, wenn der Job aus der
+    /// squeue-Ausgabe altert, damit das Detail (letzte Logs!) nicht mitten im
+    /// Lesen wegpoppt. Erst das Zurück-Navigieren räumt ihn auf.
+    @State private var presentedJob: Job? = nil
+    #endif
+    /// Zeichenbreiten-Schätzungen / Zeilenmaße für Tabelle und Höhen-Schätzung
+    /// — skalieren über @ScaledMetric mit der Textgröße (⌘+/⌘-), sonst
+    /// trunkieren die Spalten bei großen Stufen an eingefrorenen Pixelbreiten.
+    @ScaledMetric(relativeTo: .callout) private var propPx: CGFloat = 6.5   // SF Pro Text @ .callout
+    @ScaledMetric(relativeTo: .callout) private var monoPx: CGFloat = 7.6   // SF Mono @ .callout
+    @ScaledMetric(relativeTo: .callout) private var tableRowH: CGFloat = 20
+    @ScaledMetric(relativeTo: .callout) private var tableHeaderH: CGFloat = 30
+    @ScaledMetric(relativeTo: .caption) private var filterBarH: CGFloat = 42
     @AppStorage("inspectorOpen") private var inspectorOpen: Bool = true
     /// iOS: Cluster-Inspector als Sheet, startet geschlossen (entkoppelt vom
     /// persistierten macOS-Pane-Zustand `inspectorOpen`). Auf macOS ungenutzt.
@@ -389,7 +576,7 @@ struct JobsView: View {
                 inspectorPane
                     .navigationTitle("Cluster")
                     .inlineNavTitle()
-                    .navBarBackground(Theme.background)
+                    // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -397,6 +584,13 @@ struct JobsView: View {
             .glassModal(isPresented: $showGpuHoursSheet) { gpuHoursSheet }
         }
         .glassModal(isPresented: $showNodesSheet) { nodesSheet }
+        // iPad-Dashboard hat KEIN Inspector-Sheet, das die Partition-/GPU-Hours-
+        // Sheets hostet — dort würden Taps auf Dashboard-Widgets ins Leere laufen.
+        // Im Dashboard-Modus daher direkt am Body präsentieren; die Bindings sind
+        // außerhalb des Dashboards inert, sodass die Inspector-Variante oben
+        // (für den gestapelten Fall) ungestört bleibt.
+        .glassModal(item: dashboardPartitionBinding) { partitionSheet($0) }
+        .glassModal(isPresented: dashboardGpuHoursBinding) { gpuHoursSheet }
         #else
         .glassModal(item: $sheetPartition) { partitionSheet($0) }
         .glassModal(isPresented: $showGpuHoursSheet) { gpuHoursSheet }
@@ -410,25 +604,39 @@ struct JobsView: View {
         }
         .background(hiddenShortcuts)
         .background(paneCycleShortcuts)
+        #if os(iOS)
+        // Haptic feedback for touch interactions (no-op on Mac).
+        .sensoryFeedback(.selection, trigger: marked)
+        .sensoryFeedback(.success, trigger: batchResult)
+        #endif
         .confirmationDialog(
             cancelConfirmJobs.count == 1
-                ? "Job \(cancelConfirmJobs.first?.jobId ?? "") abbrechen?"
-                : "\(cancelConfirmJobs.count) Jobs abbrechen?",
+                ? "Job \(cancelConfirmJobs.first?.jobId ?? "") beenden?"
+                : "\(cancelConfirmJobs.count) Jobs beenden?",
             isPresented: Binding(
                 get: { !cancelConfirmJobs.isEmpty },
                 set: { if !$0 { cancelConfirmJobs = [] } }
-            )
+            ),
+            // iOS blendet den Titel per Default aus — der Job-/Zähler-Kontext
+            // muss aber immer sichtbar sein.
+            titleVisibility: .visible
         ) {
-            Button("scancel", role: .destructive) {
+            Button("Job beenden", role: .destructive) {
                 let jobs = cancelConfirmJobs
+                cancelConfirmJobs = []
                 Task {
-                    for j in jobs {
-                        _ = try? await appState.slurm?.cancelJob(j.jobId)
+                    do {
+                        // One scancel for the whole set instead of N round-trips.
+                        try await appState.slurm?.cancelJobs(jobs.map(\.jobId))
+                    } catch {
+                        // Surface the real error (stderr now reaches us) instead
+                        // of silently doing nothing.
+                        batchResult = "scancel fehlgeschlagen: \(error.localizedDescription)"
                     }
-                    cancelConfirmJobs = []
+                    await vm.refresh()   // reflect the change in the list
                 }
             }
-            Button("Abbrechen", role: .cancel) { cancelConfirmJobs = [] }
+            Button("Behalten", role: .cancel) { cancelConfirmJobs = [] }
         }
         // Batch: Werte-Sheet (QoS/Partition)
         .sheet(item: $batchValueAction) { action in
@@ -443,9 +651,19 @@ struct JobsView: View {
         .confirmationDialog(
             batchConfirm.map { "\($0.jobs.count) Job\($0.jobs.count == 1 ? "" : "s") \($0.action.confirmVerb)?" } ?? "",
             isPresented: Binding(get: { batchConfirm != nil }, set: { if !$0 { batchConfirm = nil } }),
+            // Titel (mit Job-Anzahl) auch auf iOS immer zeigen — sonst stünde
+            // der destruktive Button ohne jeden Kontext da.
+            titleVisibility: .visible,
             presenting: batchConfirm
         ) { c in
-            Button(c.action.title, role: c.action.isDestructive ? .destructive : nil) {
+            // Destruktiv mit eindeutigem Verb-Objekt-Label, damit neben dem
+            // Dismiss-„Abbrechen" nie ein zweites „Abbrechen" steht.
+            Button(
+                c.action == .cancel
+                    ? "\(c.jobs.count) Job\(c.jobs.count == 1 ? "" : "s") beenden"
+                    : c.action.title,
+                role: c.action.isDestructive ? .destructive : nil
+            ) {
                 applyBatch(c.action, to: c.jobs)
             }
             Button("Abbrechen", role: .cancel) {}
@@ -504,18 +722,35 @@ struct JobsView: View {
         // immediate catch-up refresh if the cache went stale.
         .task(id: scenePhase) {
             vm.bind(appState)
-            guard scenePhase == .active else { return }
+            guard scenePhase == .active else {
+                // Vordergrund verlassen → frühesten Zeitpunkt merken. Nur echte
+                // Hintergrund-/Schlafzeit zählt als „Link vermutlich tot" —
+                // ein Sektionswechsel feuert hier nie (scenePhase bleibt aktiv).
+                if vm.leftForegroundAt == nil { vm.leftForegroundAt = Date() }
+                return
+            }
             // Returned to the foreground after a while → the SSH link may be
             // dead. Rebuild it first so the catch-up refresh is instant instead
             // of blocking on a half-open socket until the 45s timeout.
             if vm.initialFetchDone && vm.connectionMaybeStale {
                 await appState.slurm?.reconnect()
             }
+            vm.leftForegroundAt = nil
             if vm.initialFetchDone && vm.isStale { await vm.refresh() }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 10 * 1_000_000_000)
                 if Task.isCancelled { break }
-                await vm.refresh()
+                await vm.refresh(silent: true)   // background tick: no loading flash
+            }
+        }
+        // Jump to a job (from a bookmark tap): select it if present, else seed
+        // the search so the user can see why it's gone.
+        .onReceive(NotificationCenter.default.publisher(for: .openJob)) { note in
+            guard let jid = note.object as? String else { return }
+            if vm.allJobs.contains(where: { $0.id == jid }) {
+                cursor = jid
+            } else {
+                vm.search = jid
             }
         }
         .onChange(of: anyModalOpen) { _, open in
@@ -563,6 +798,13 @@ struct JobsView: View {
         .onChange(of: cursor) { oldValue, newValue in
             // Auswahl für den nächsten Ansichtswechsel merken.
             vm.savedCursor = newValue
+            #if os(iOS)
+            // Snapshot des (per Cursor) gepushten Jobs aktualisieren — er hält
+            // das Detail offen, falls der Job später aus der Queue altert.
+            if let id = newValue, let live = vm.allJobs.first(where: { $0.id == id }) {
+                presentedJob = live
+            }
+            #endif
             // A log modal belongs to one job's detail pane — if the selection
             // moves (or clears), drop it so it can't show a stale job's log.
             if oldValue != newValue, logModal != nil { logModal = nil }
@@ -577,15 +819,30 @@ struct JobsView: View {
             }
         }
         .onChange(of: vm.allJobs) { _, newJobs in
-            // Drop any cursor / marked IDs that no longer exist.
             let alive = Set(newJobs.map(\.id))
-            if let c = cursor, !alive.contains(c) { cursor = nil }
             marked = marked.intersection(alive)
-            ensureCursor()
+            #if os(iOS)
+            // Solange der gepushte Job noch in der Queue ist, den Snapshot
+            // mit den Live-Daten nachführen (Status/Laufzeit im Detail-Kopf).
+            if let p = presentedJob, let live = newJobs.first(where: { $0.id == p.id }) {
+                presentedJob = live
+            }
+            #endif
+            if let c = cursor, !alive.contains(c) {
+                // The selected job left the queue — clear the selection but do
+                // NOT yank the cursor to row 0 mid-read (that jumped to an
+                // unrelated job on macOS). On iOS `presentedJob` keeps the
+                // pushed detail alive, so clearing the cursor no longer pops it.
+                cursor = nil
+            } else {
+                ensureCursor()
+            }
         }
-        .onChange(of: vm.runningOnly) { _, _ in ensureCursor() }
-        .onChange(of: vm.allUsers)    { _, _ in ensureCursor() }
-        .onChange(of: vm.search)      { _, _ in ensureCursor() }
+        // Prune marks to what's actually visible when a filter changes, so the
+        // marked count and bulk actions never include rows the user can't see.
+        .onChange(of: vm.runningOnly) { _, _ in pruneMarkedToVisible(); ensureCursor() }
+        .onChange(of: vm.allUsers)    { _, _ in pruneMarkedToVisible(); ensureCursor() }
+        .onChange(of: vm.search)      { _, _ in pruneMarkedToVisible(); ensureCursor() }
         .onChange(of: marked)         { _, m in vm.savedMarked = m }
         .onChange(of: sortOrder)      { _, s in vm.savedSortOrder = s }
         .onAppear { restoreSelection() }
@@ -629,9 +886,10 @@ struct JobsView: View {
                 splitLayout
             }
         }
-        .background(Theme.background)
+        .slurmyContentBackground()
         .toolbar { jobsToolbar }
         .searchable(text: $vm.search, prompt: "Suche Job, User, Partition, Status")
+        .searchFocusedCompat($searchFocused)   // ⌘F (Shortcut.focusSearch) springt hierhin
         #else
         NavigationStack {
             Group {
@@ -643,20 +901,22 @@ struct JobsView: View {
                     leadingPane
                 }
             }
-                .background(Theme.background)
+                .slurmyContentBackground()
                 .navigationTitle("Jobs")
                 .inlineNavTitle()
-                .navBarBackground(Theme.background)
+                // Keine opaken Nav-Bar-Hintergründe mehr: Die System-Bars
+                // adoptieren auf iOS 26 automatisch Liquid Glass und sampeln
+                // den Theme-Content darunter.
                 .navigationDestination(isPresented: iosDetailPresented) {
                     detailPane
                         .environmentObject(appState)
-                        .navBarBackground(Theme.background)
                 }
                 .toolbar { jobsToolbar }
                 // Im Auswahl-Modus die Tab-Leiste ausblenden, damit die untere
                 // Aktionsleiste freisteht (iOS-Standard wie Mail/Fotos).
                 .toolbar(selectionMode ? .hidden : .automatic, for: .tabBar)
                 .searchable(text: $vm.search, prompt: "Suche Job, User, Partition, Status")
+                .searchFocusedCompat($searchFocused)   // ⌘F (Hardware-Tastatur)
         }
         #endif
     }
@@ -685,14 +945,13 @@ struct JobsView: View {
                     .paneFocusRing(focusedPane == .detail)
             }
         } right: {
-            ResizableVSplit3 {
-                gpuAllocationCardView
-            } b: {
-                diskQuotasCardView
-            } c: {
-                gpuHoursCardView
-            }
-            .background(Theme.background)
+            // Inspector-Spalte: KEIN äußerer ScrollView. Die drei Regionen
+            // füllen zusammen exakt die Spaltenhöhe: GPU-Belegung bekommt
+            // ihre natürliche Höhe (alles sichtbar), Disk-Quotas und
+            // GPU-Stunden teilen sich den Rest (s. clusterInfoColumn).
+            clusterInfoColumn
+                .padding(10)
+                .slurmyContentBackground()
             .focusable()
             .focusEffectDisabled()
             .focused($focusedPane, equals: .inspector)
@@ -701,16 +960,19 @@ struct JobsView: View {
     }
 
     private static let leftMinTop: CGFloat = 140
-    private static let leftMinBottom: CGFloat = 170
+    /// Mindesthöhe des Detail-Panes. Seit das Detail auf macOS nicht mehr
+    /// außen scrollt (siehe JobDetailView.macDetailLayout), braucht es Platz
+    /// für den fixen Header, die Log-Kartenköpfe und die Aktionszeile —
+    /// bei den früheren 170 pt wären die unteren Elemente unerreichbar
+    /// abgeschnitten (vorher rettete der Außen-Scroll sie).
+    private static let leftMinBottom: CGFloat = 260
 
     /// Estimated height of the jobs table at `rows` rows (filter bar + header +
     /// rows). Used to cap the table to its content so a short list leaves no
-    /// whitespace under it.
+    /// whitespace under it. Die Maße kommen aus @ScaledMetric, damit die
+    /// Schätzung bei größerer Textstufe (⌘+) mitwächst.
     private func tableContentHeight(rows: Int) -> CGFloat {
-        let filterBar: CGFloat = 42
-        let header: CGFloat = 30
-        let rowH: CGFloat = 20
-        return filterBar + header + CGFloat(max(1, rows)) * rowH + 12
+        filterBarH + tableHeaderH + CGFloat(max(1, rows)) * tableRowH + 12
     }
 
     #endif
@@ -732,6 +994,9 @@ struct JobsView: View {
             detailPane
                 .background(Theme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        case .cluster:
+            clusterInfoColumn
+                .padding(12)
         case .gpuAllocation:
             clusterCard {
                 GpuAllocationStrip(
@@ -755,7 +1020,7 @@ struct JobsView: View {
                     isLoading: vm.hoursLoading,
                     isFocused: false,
                     onOpenFullView: { showGpuHoursSheet = true },
-                    onRefresh: { Task { await vm.reloadGpuHours() } }
+                    onRefresh: { Task { await vm.reloadGpuHours(force: true) } }
                 )
             }
         }
@@ -790,7 +1055,7 @@ struct JobsView: View {
         HStack(spacing: 6) {
             Image(systemName: "person.fill")
                 .foregroundColor(vm.allUsers ? Theme.textSecondary : Theme.accent)
-            Toggle("", isOn: $vm.allUsers.animation(.smooth(duration: 0.3)))
+            Toggle("", isOn: $vm.allUsers.animation(Motion.reduceMotionEnabled ? nil : .smooth(duration: 0.3)))
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)
@@ -827,25 +1092,38 @@ struct JobsView: View {
                 // Inspector öffnet per Tap auf die Cluster-Leiste — daher hier
                 // nicht nochmal als Button, um die Bar schlank zu halten.
                 Button { Task { await vm.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                    .accessibilityLabel("Aktualisieren")
                 sortMenu
                 filterMenu
-                // iPad: Grid-Dashboard ein/aus + Layout bearbeiten. iPhone
+                // iPad (reguläre Breite): Grid-Dashboard ein/aus direkt in der
+                // Toolbar (zusätzlich zu Settings → „Dashboard (Jobs)"), plus
+                // Layout bearbeiten, solange das Grid aktiv ist. iPhone
                 // (compact) behält die feste Liste, daher dort ausgeblendet.
-                // Grid-Edit nur, wenn das anpassbare Dashboard aktiv ist; der
-                // Split-/Grid-Umschalter lebt jetzt in den Einstellungen.
-                if horizontalSizeClass == .regular, iPadDashboardActive {
-                    Button { editingDashboard.toggle() } label: {
-                        Image(systemName: editingDashboard ? "checkmark.circle.fill" : "slider.horizontal.3")
+                if horizontalSizeClass == .regular {
+                    Button { withMotion { dashboardEnabled.toggle() } } label: {
+                        Image(systemName: dashboardEnabled ? "rectangle.3.group.fill" : "rectangle.3.group")
+                    }
+                    .accessibilityLabel(dashboardEnabled ? "Grid-Dashboard ausschalten" : "Grid-Dashboard einschalten")
+                    if iPadDashboardActive {
+                        Button { editingDashboard.toggle() } label: {
+                            Image(systemName: editingDashboard ? "checkmark.circle.fill" : "slider.horizontal.3")
+                        }
+                        .accessibilityLabel(editingDashboard ? "Layout fertig bearbeiten" : "Layout bearbeiten")
                     }
                 }
                 Button { showNodesSheet.toggle() } label: { Image(systemName: "server.rack") }
+                    .accessibilityLabel("Knoten-Übersicht")
                 Button { showSubmit.toggle() } label: { Image(systemName: "plus.circle.fill") }
+                    .accessibilityLabel("Job einreichen")
             }
         }
         #else
         ToolbarItemGroup(placement: .primaryAction) {
             allUsersToggle
-            Button { Task { await vm.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+            Button { Task { await vm.refresh() } } label: {
+                Image(systemName: "arrow.clockwise")
+                    .symbolEffect(.pulse, options: .repeating, isActive: vm.loading)
+            }
                 .keyboardShortcut(Shortcut.refresh.key, modifiers: Shortcut.refresh.modifiers)
                 .help("Aktualisieren (r)")
             // Interaktive Session = srun --pty in Terminal.app → nur macOS.
@@ -875,7 +1153,7 @@ struct JobsView: View {
         } else {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    withAnimation { inspectorOpen.toggle() }
+                    withMotion { inspectorOpen.toggle() }
                 } label: {
                     Image(systemName: "sidebar.right")
                         .font(.system(size: 15, weight: .semibold))
@@ -898,9 +1176,11 @@ struct JobsView: View {
     private var iosDetailPresented: Binding<Bool> {
         Binding(
             // Im Grid-Dashboard zeigt das Detail-Widget den Job inline — dann
-            // NICHT zusätzlich pushen.
-            get: { !iPadDashboardActive && !selectionMode && cursor != nil },
-            set: { if !$0 { cursor = nil } }
+            // NICHT zusätzlich pushen. `presentedJob` hält das Detail auch dann
+            // offen, wenn der Job aus der Queue gealtert ist (cursor == nil) —
+            // erst das Zurück-Navigieren des Nutzers räumt beides auf.
+            get: { !iPadDashboardActive && !selectionMode && (cursor != nil || presentedJob != nil) },
+            set: { if !$0 { cursor = nil; presentedJob = nil } }
         )
     }
 
@@ -908,6 +1188,18 @@ struct JobsView: View {
     /// iPhone (compact) bleibt immer bei der festen Liste.
     private var iPadDashboardActive: Bool {
         horizontalSizeClass == .regular && dashboardEnabled
+    }
+
+    /// Body-level partition-sheet presenter, active ONLY in iPad dashboard mode
+    /// (where the inspector sheet that normally hosts it isn't mounted). Inert
+    /// otherwise so it never double-presents with the inspector-nested one.
+    private var dashboardPartitionBinding: Binding<PartitionSelection?> {
+        Binding(get: { iPadDashboardActive ? sheetPartition : nil },
+                set: { if iPadDashboardActive { sheetPartition = $0 } })
+    }
+    private var dashboardGpuHoursBinding: Binding<Bool> {
+        Binding(get: { iPadDashboardActive ? showGpuHoursSheet : false },
+                set: { if iPadDashboardActive { showGpuHoursSheet = $0 } })
     }
     #endif
 
@@ -918,8 +1210,14 @@ struct JobsView: View {
     /// Any modal is on top of the table — silence Job-section shortcuts so
     /// they don't fire while the user is reading help / submitting / etc.
     private var anyModalOpen: Bool {
-        showHelp || showSubmit || showInteractive || showGpuHoursSheet
-            || sheetPartition != nil || logModal != nil
+        var open = showHelp || showSubmit || showInteractive || showGpuHoursSheet
+            || sheetPartition != nil || logModal != nil || showNodesSheet
+        #if os(iOS)
+        // The cluster inspector is a sheet on iOS — its presence must also
+        // silence the (hardware-keyboard) table shortcuts underneath.
+        open = open || showInspectorSheet
+        #endif
+        return open
     }
 
     private var hiddenShortcuts: some View {
@@ -958,13 +1256,14 @@ struct JobsView: View {
     @ViewBuilder
     private var modalScopedShortcuts: some View {
         Group {
-            Shortcut.hiddenButton(.quitApp) {
-                #if os(macOS)
-                NSApplication.shared.terminate(nil)
-                #endif
-            }
-            Shortcut.hiddenButton(.toggleAllUsers)       { withAnimation(.smooth(duration: 0.3)) { vm.allUsers.toggle() } }
-            Shortcut.hiddenButton(.toggleAllUsersCmd)    { withAnimation(.smooth(duration: 0.3)) { vm.allUsers.toggle() } }
+            // Quit läuft über das System-Menü (⌘Q) — das frühere bare `q`
+            // beendete die App (samt SSH-Session) bei einem einzigen
+            // versehentlichen Tastendruck ohne Rückfrage.
+            // ⌘F — Suche fokussieren (Eintrag im Help-Overlay kommt aus dem
+            // Shortcut-Enum; dieses Binding hält beide synchron).
+            Shortcut.hiddenButton(.focusSearch)          { focusSearchField() }
+            Shortcut.hiddenButton(.toggleAllUsers)       { withMotion(.smooth(duration: 0.3)) { vm.allUsers.toggle() } }
+            Shortcut.hiddenButton(.toggleAllUsersCmd)    { withMotion(.smooth(duration: 0.3)) { vm.allUsers.toggle() } }
             Shortcut.hiddenButton(.toggleRunningOnly)    { vm.runningOnly.toggle() }
             Shortcut.hiddenButton(.attachSelected)       { attachSelectedJob() }
             Shortcut.hiddenButton(.cancelSelected)       { requestCancelOfSelection() }
@@ -994,13 +1293,64 @@ struct JobsView: View {
             // `k` (above) and a focused Table are the two routes for cursor
             // movement. Space is routed via `dispatchSpaceAction()` in the
             // always-active cluster.
-            // ⌘A — mark every visible row
+            // ⌘A — mark every visible row. Nur solange die Tabelle den Fokus
+            // hält: Im Suchfeld (oder einem anderen Pane) muss ⌘A das normale
+            // „Alles auswählen" des Texteditors bleiben — ein View-hierarchy-
+            // Key-Equivalent würde es sonst VOR dem Field-Editor abfangen.
             Button { marked = Set(vm.filtered().map(\.id)) } label: { EmptyView() }
                 .keyboardShortcut("a", modifiers: .command)
                 .frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
+                .disabled(markAllSuppressed)
         }
         .disabled(anyModalOpen)
     }
+
+    /// ⌘A nur in der Tabelle ausführen. macOS: das Pane-Fokus-Modell ist
+    /// verlässlich (Suchfeld-Fokus ⇒ focusedPane == nil). iOS: kein
+    /// Pane-Fokus auf Touch — dort genügt der Suchfeld-Wächter.
+    private var markAllSuppressed: Bool {
+        if searchFocused { return true }
+        #if os(macOS)
+        return focusedPane != .table
+        #else
+        return false
+        #endif
+    }
+
+    /// ⌘F → Suchfeld fokussieren. Ab macOS 15 / iOS 17 über das
+    /// `.searchFocused`-Binding; auf macOS 14 (kein `.searchFocused`) wird das
+    /// NSSearchField der Toolbar direkt zum First Responder gemacht.
+    private func focusSearchField() {
+        if #available(macOS 15.0, iOS 17.0, *) {
+            searchFocused = true
+        } else {
+            #if os(macOS)
+            legacyFocusToolbarSearchField()
+            #endif
+        }
+    }
+
+    #if os(macOS)
+    /// macOS-14-Fallback: das (AppKit-gebackene) Suchfeld in der Fenster-
+    /// Titelleiste suchen und fokussieren. Best-effort — findet die Hierarchie
+    /// kein NSSearchField, bleibt ⌘F folgenlos.
+    private func legacyFocusToolbarSearchField() {
+        guard let window = NSApp.keyWindow else { return }
+        func findSearchField(in view: NSView) -> NSSearchField? {
+            if let field = view as? NSSearchField { return field }
+            for sub in view.subviews {
+                if let found = findSearchField(in: sub) { return found }
+            }
+            return nil
+        }
+        // Toolbar-Views hängen über dem contentView (Theme-Frame) — von dort
+        // aus suchen, damit auch Titelbar-Accessories erfasst sind.
+        let root = window.contentView?.superview ?? window.contentView
+        if let root, let field = findSearchField(in: root) {
+            window.makeFirstResponder(field)
+        }
+    }
+    #endif
 
     private func toggleMarkAtCursor() {
         guard let id = cursor else { return }
@@ -1054,11 +1404,10 @@ struct JobsView: View {
 
     /// QoS/Partition-Optionen einmalig vom Cluster holen (für das Werte-Sheet).
     private func loadActionOptions() async {
-        guard let slurm = appState.slurm else { return }
-        if availableQos.isEmpty, let q = try? await slurm.fetchAvailableQos() { availableQos = q }
-        if availablePartitions.isEmpty, let p = try? await slurm.fetchAvailablePartitions() {
-            availablePartitions = p
-        }
+        // Shared connection-wide cache — avoids refetching the cluster-static
+        // lists here and again in every JobDetailView.
+        if availableQos.isEmpty { availableQos = await appState.cachedAvailableQos() }
+        if availablePartitions.isEmpty { availablePartitions = await appState.cachedAvailablePartitions() }
     }
 
     private func startBatch(_ action: BatchAction) {
@@ -1081,24 +1430,43 @@ struct JobsView: View {
         guard let slurm = appState.slurm else { return }
         Task {
             var ok = 0, failed = 0
-            for j in jobs {
-                do {
-                    switch action {
-                    case .cancel:    _ = try await slurm.cancelJob(j.jobId)
-                    case .qos:       _ = try await slurm.updateJobQos(j.jobId, qos: value ?? "")
-                    case .partition: _ = try await slurm.updateJobPartition(j.jobId, partition: value ?? "")
-                    case .hold:      _ = try await slurm.holdJob(j.jobId)
-                    case .release:   _ = try await slurm.releaseJob(j.jobId)
-                    case .requeue:   _ = try await slurm.requeueJob(j.jobId)
+            // Erste echte Fehlermeldung mitnehmen (SSHError.commandFailed trägt
+            // das stderr von scontrol/scancel) — „2 Fehler" ohne Grund ist für
+            // eine Cluster-mutierende Aktion wertlos.
+            var firstError: String?
+            if action == .cancel {
+                // Batched scancel — one SSH round-trip for the whole selection
+                // instead of one per job.
+                do { try await slurm.cancelJobs(jobs.map(\.jobId)); ok = jobs.count }
+                catch {
+                    failed = jobs.count
+                    firstError = error.localizedDescription
+                }
+            } else {
+                for j in jobs {
+                    // Stop mutating the cluster if the user disconnected mid-loop.
+                    guard appState.slurm != nil else { break }
+                    do {
+                        switch action {
+                        case .cancel:    break   // handled above (batched)
+                        case .qos:       _ = try await slurm.updateJobQos(j.jobId, qos: value ?? "")
+                        case .partition: _ = try await slurm.updateJobPartition(j.jobId, partition: value ?? "")
+                        case .hold:      _ = try await slurm.holdJob(j.jobId)
+                        case .release:   _ = try await slurm.releaseJob(j.jobId)
+                        case .requeue:   _ = try await slurm.requeueJob(j.jobId)
+                        }
+                        ok += 1
+                    } catch {
+                        failed += 1
+                        if firstError == nil { firstError = error.localizedDescription }
                     }
-                    ok += 1
-                } catch {
-                    failed += 1
                 }
             }
             let valuePart = value.map { " → \($0)" } ?? ""
-            batchResult = "\(action.title)\(valuePart): \(ok) ok"
-                + (failed > 0 ? ", \(failed) Fehler" : "")
+            let failPart = failed > 0
+                ? ", \(failed) Fehler" + (firstError.map { " (\($0))" } ?? "")
+                : ""
+            batchResult = "\(action.title)\(valuePart): \(ok) ok" + failPart
             marked = []
             #if os(iOS)
             selectionMode = false
@@ -1123,7 +1491,7 @@ struct JobsView: View {
             }
             Divider()
             Button { bookmarkSelection() } label: {
-                Label("Bookmarken (\(actionSet.count))", systemImage: "bookmark")
+                Label("Lesezeichen (\(actionSet.count))", systemImage: "bookmark")
             }
             .disabled(actionSet.isEmpty)
         } label: {
@@ -1142,12 +1510,16 @@ struct JobsView: View {
                   let path = details.value("Command")
             else { return }
             _ = script   // not needed locally — Terminal opens the remote path
+            // Single-quote the remote path so a path with spaces/metacharacters
+            // can't break the editor command (the whole remoteCommand is then
+            // single-quoted again by TerminalLauncher for the ssh argument).
+            let safePath = "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
             await MainActor.run {
                 TerminalLauncher.openSSH(
                     host: creds.host,
                     user: creds.username,
                     port: creds.port,
-                    remoteCommand: "${EDITOR:-vim} \(path)"
+                    remoteCommand: "${EDITOR:-vim} \(safePath)"
                 )
             }
         }
@@ -1161,20 +1533,18 @@ struct JobsView: View {
     private func cyclePartitionSheet() {
         guard !vm.gpuUsage.isEmpty else { return }
         let parts = vm.gpuUsage.map(\.partition)
-        if sheetPartition == nil {
-            // First press: open the first partition.
-            partitionCycleIndex = 0
+        // Derive the position from the ACTUALLY open sheet, so `g` stays in sync
+        // even when the sheet was opened via the inspector (not via `g`) or the
+        // partition list reordered. After the last, close it (a long `g`-mash
+        // exits cleanly).
+        let nextIdx: Int
+        if let open = sheetPartition?.name, let i = parts.firstIndex(of: open) {
+            nextIdx = i + 1
+            if nextIdx >= parts.count { sheetPartition = nil; return }
         } else {
-            // Subsequent press: advance. After the last, close the sheet
-            // (so a long `g`-mash always exits cleanly).
-            partitionCycleIndex += 1
-            if partitionCycleIndex >= parts.count {
-                sheetPartition = nil
-                partitionCycleIndex = 0
-                return
-            }
+            nextIdx = 0
         }
-        let name = parts[partitionCycleIndex]
+        let name = parts[nextIdx]
         sheetPartition = PartitionSelection(name: name)
         Task { await vm.loadPartition(name) }
     }
@@ -1186,18 +1556,20 @@ struct JobsView: View {
     // MARK: – Sort helpers
 
     /// Columns in the same order they appear in the Table. Used to cycle
-    /// the primary sort key with y/← and c/→.
+    /// the primary sort key with y/← and c/→. Laufzeit/Speicher sortieren
+    /// über numerische Schlüssel (siehe `Job`-Extension unten) — als Text
+    /// landete „59:00" über „5:00:00" und „512M" über „8G".
     private static let sortColumns: [KeyPathComparator<Job>] = [
-        .init(\.jobId,     order: .reverse),
-        .init(\.name,      order: .forward),
-        .init(\.state,     order: .forward),
-        .init(\.user,      order: .forward),
-        .init(\.qos,       order: .forward),
-        .init(\.partition, order: .forward),
-        .init(\.gpus,      order: .reverse),
-        .init(\.cpus,      order: .reverse),
-        .init(\.memory,    order: .forward),
-        .init(\.runtime,   order: .reverse),
+        .init(\.jobId,          order: .reverse),
+        .init(\.name,           order: .forward),
+        .init(\.state,          order: .forward),
+        .init(\.user,           order: .forward),
+        .init(\.qos,            order: .forward),
+        .init(\.partition,      order: .forward),
+        .init(\.gpus,           order: .reverse),
+        .init(\.cpus,           order: .reverse),
+        .init(\.memoryMB,       order: .forward),
+        .init(\.runtimeSeconds, order: .reverse),
     ]
 
     private func cycleSort(by delta: Int) {
@@ -1241,7 +1613,9 @@ struct JobsView: View {
         #if os(macOS)
         if inspectorOpen && !dashboardEnabled { order.append(.inspector) }
         #else
-        if inspectorOpen { order.append(.inspector) }
+        // iOS: the inspector is a SHEET, gated by showInspectorSheet — not the
+        // macOS-only `inspectorOpen` AppStorage (which is irrelevant here).
+        if showInspectorSheet { order.append(.inspector) }
         #endif
 
         let current = focusedPane ?? .table
@@ -1263,12 +1637,20 @@ struct JobsView: View {
 
     /// Materialised, sorted, filtered job list — the row order the user
     /// sees right now in the table.
+    /// Materialised, sorted, filtered job list — the row order the user sees.
+    /// Memoized in the VM so the table, height calc and cursor math don't each
+    /// re-sort within a single render.
     private var visibleJobs: [Job] {
-        let sorted = vm.filtered().sorted(using: sortOrder)
-        guard runningJobsFirst else { return sorted }
-        // Stabile Partition: laufende Jobs zuerst, jede Gruppe behält ihre
-        // Spaltensortierung.
-        return sorted.filter(\.isRunning) + sorted.filter { !$0.isRunning }
+        vm.visibleJobs(sortOrder: sortOrder, runningFirst: runningJobsFirst)
+    }
+
+    /// Keep only the marks that are currently visible (after the active
+    /// filters), so the count and bulk actions match what the user sees.
+    private func pruneMarkedToVisible() {
+        guard !marked.isEmpty else { return }
+        let visible = Set(vm.filteredJobs.map(\.id))
+        let pruned = marked.intersection(visible)
+        if pruned != marked { marked = pruned }
     }
 
     /// Make sure a cursor exists whenever we have data, so the first ↑/↓
@@ -1332,6 +1714,7 @@ struct JobsView: View {
     /// selection/cursor/search reset.
     private func closeTopmostModal() {
         if logModal != nil        { logModal = nil; return }
+        if showNodesSheet         { showNodesSheet = false; return }
         if sheetPartition  != nil { sheetPartition = nil; return }
         if showGpuHoursSheet      { showGpuHoursSheet = false; return }
         if showHelp               { showHelp = false; return }
@@ -1368,7 +1751,7 @@ struct JobsView: View {
         #if os(iOS)
         showInspectorSheet = true
         #else
-        withAnimation { inspectorOpen = true }
+        withMotion { inspectorOpen = true }
         #endif
     }
 
@@ -1409,34 +1792,60 @@ struct JobsView: View {
 
     private func handleEscape() {
         if logModal != nil { logModal = nil; return }
+        if showNodesSheet { showNodesSheet = false; return }
         if sheetPartition != nil { sheetPartition = nil; return }
         if showGpuHoursSheet { showGpuHoursSheet = false; return }
         if showHelp { showHelp = false; return }
         if showSubmit { showSubmit = false; return }
         if showInteractive { showInteractive = false; return }
         if !marked.isEmpty { marked = []; return }
+        #if os(iOS)
+        if cursor != nil || presentedJob != nil { cursor = nil; presentedJob = nil; return }
+        #else
         if cursor != nil { cursor = nil; return }
+        #endif
         if !vm.search.isEmpty { vm.search = ""; return }
     }
 
     private var leadingPane: some View {
         ZStack {
+            #if os(iOS)
             Theme.background.ignoresSafeArea()
             VStack(spacing: 0) {
-                #if os(iOS)
                 // iPhone: Cluster-Leiste immer sichtbar (Tap öffnet das Sheet).
                 compactClusterBar
                 Divider().background(Theme.border.opacity(0.6))
-                #endif
-                // macOS: collapsed inspector = just collapsed; no compact cluster
-                // strip — the info simply isn't shown until the column is opened.
-                filterBar
-                if let err = vm.error {
-                    ErrorBanner(message: err)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                }
-                jobsListing
+                leadingStack
             }
+            #else
+            // Kein opaker Pane-Boden mehr: Der Glas-Untergrund kommt von
+            // paneLayout (.slurmyContentBackground) — die Tabelle schwebt
+            // als eingerückte Frost-Karte darüber, sodass der
+            // "Hinter-Hintergrund" bei aktivem Liquid Glass sichtbar ist.
+            leadingStack
+                .slurmyFrostSurface()
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 0.5)
+                )
+                .padding(10)
+            #endif
+        }
+    }
+
+    /// Filterleiste + Fehlerbanner + Tabelle/Liste — gemeinsamer Kern beider
+    /// Plattform-Varianten von `leadingPane`.
+    private var leadingStack: some View {
+        VStack(spacing: 0) {
+            // macOS: collapsed inspector = just collapsed; no compact cluster
+            // strip — the info simply isn't shown until the column is opened.
+            filterBar
+            if let err = vm.error {
+                ErrorBanner(message: err)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+            }
+            jobsListing
         }
     }
 
@@ -1445,7 +1854,10 @@ struct JobsView: View {
     @ViewBuilder
     private var jobsListing: some View {
         #if os(iOS)
-        if horizontalSizeClass == .compact { jobListCompact } else { table }
+        // Im Auswahl-Modus immer die kompakte Liste zeigen — nur sie hat die
+        // Touch-Affordanzen zum Markieren (Tap/Swipe). Die Table bewegt per
+        // Tap nur den Einzel-Cursor, Batch-Aktionen wären dort eine Sackgasse.
+        if horizontalSizeClass == .compact || selectionMode { jobListCompact } else { table }
         #else
         table
         #endif
@@ -1454,8 +1866,10 @@ struct JobsView: View {
     #if os(iOS)
     // MARK: – iOS kompakte Jobs-Liste (Touch)
 
+    // String-Array ⇒ lokalisiert nicht automatisch wie Text-Literale.
     private static let sortColumnLabels =
-        ["ID", "Name", "Status", "User", "QoS", "Partition", "GPU", "CPU", "Memory", "Laufzeit"]
+        ["ID", "Name", "Status", "User", "QoS", "Partition", "GPU", "CPU",
+         String(localized: "Speicher"), String(localized: "Laufzeit")]
 
     private var jobListCompact: some View {
         let real = visibleJobs
@@ -1488,7 +1902,7 @@ struct JobsView: View {
                             }
                         }
                         Button { bookmarks.add(Bookmark(jobId: job.jobId, label: job.name)) } label: {
-                            Label("Bookmark", systemImage: "bookmark")
+                            Label("Lesezeichen", systemImage: "bookmark")
                         }
                         .tint(Theme.purple)
                     }
@@ -1496,7 +1910,8 @@ struct JobsView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .slurmyContentBackground()
+        .refreshable { await vm.refresh() }   // Pull-to-refresh (touch)
         .redacted(reason: initialLoad ? .placeholder : [])
         .overlay {
             if !initialLoad && data.isEmpty {
@@ -1579,14 +1994,23 @@ struct JobsView: View {
     }
 
     private var connectionDot: some View {
-        Circle().fill(jobsStatusColor).frame(width: 10, height: 10)
+        // Breathes while connecting/degraded, calm when connected.
+        BreathingDot(color: jobsStatusColor, active: connectionUnsettled, size: 10)
             .accessibilityLabel(Text(appState.connectionStatus.label))
+    }
+
+    private var connectionUnsettled: Bool {
+        switch appState.connectionStatus {
+        case .connecting, .degraded: return true
+        default: return false
+        }
     }
 
     private var jobsStatusColor: Color {
         switch appState.connectionStatus {
         case .connected:    return Theme.success
         case .connecting:   return Theme.warning
+        case .degraded:     return Theme.warning
         case .failed:       return Theme.danger
         case .disconnected: return Theme.textSecondary
         }
@@ -1640,6 +2064,39 @@ struct JobsView: View {
         }
     }
 
+    /// Gemessene natürliche Höhe der GPU-Belegungs-Karte (s. clusterInfoColumn).
+    @State private var gpuCardNaturalH: CGFloat = 320
+
+    /// Kombinierte Cluster-Spalte (klassischer Inspector UND .cluster-Widget):
+    /// Die GPU-Belegung bekommt ihre NATÜRLICHE Höhe, damit alle Partitionen
+    /// sichtbar sind (Deckel: 60 % der Spalte als Schutz vor Riesen-Clustern,
+    /// dann scrollt sie intern); Disk-Quotas und GPU-Stunden teilen sich den
+    /// restlichen Platz gleichmäßig und scrollen jeweils in sich.
+    private var clusterInfoColumn: some View {
+        GeometryReader { geo in
+            VStack(spacing: 12) {
+                ScrollView {
+                    gpuAllocationCardView
+                        .frame(maxWidth: .infinity)
+                        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) {
+                            gpuCardNaturalH = $0
+                        }
+                }
+                .frame(maxHeight: min(gpuCardNaturalH, geo.size.height * 0.6))
+                ScrollView {
+                    diskQuotasCardView
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollView {
+                    gpuHoursCardView
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
     // Shared cluster cards — reused by the resizable macOS cluster column and the
     // scrolling inspector pane (iOS sheet / inspector toggle).
 
@@ -1671,7 +2128,7 @@ struct JobsView: View {
             isLoading: vm.hoursLoading,
             isFocused: gpuHoursFocused,
             onOpenFullView: { showGpuHoursSheet = true },
-            onRefresh: { Task { await vm.reloadGpuHours() } }
+            onRefresh: { Task { await vm.reloadGpuHours(force: true) } }
         )
     }
 
@@ -1692,7 +2149,7 @@ struct JobsView: View {
                     .foregroundColor(Theme.accent)
                     .clipShape(Capsule())
             }
-        } else if let job = selectedJob {
+        } else if let job = detailJob {
             JobDetailView(job: job, onExpandLog: { logModal = $0 })
                 .id(job.id)
                 .environmentObject(appState)
@@ -1705,6 +2162,19 @@ struct JobsView: View {
     private var selectedJob: Job? {
         guard let id = cursor else { return nil }
         return vm.allJobs.first(where: { $0.id == id })
+    }
+
+    /// Job für die Detail-Ansicht. iOS (gepushte Navigation): fällt auf den
+    /// `presentedJob`-Snapshot zurück, wenn der Job die Queue verlassen hat —
+    /// die letzten Logs bleiben so lesbar, statt unter dem Nutzer wegzupoppen.
+    /// macOS / iPad-Dashboard behalten das bisherige Verhalten (Platzhalter).
+    private var detailJob: Job? {
+        #if os(iOS)
+        if let live = selectedJob { return live }
+        return iPadDashboardActive ? nil : presentedJob
+        #else
+        return selectedJob
+        #endif
     }
 
     /// Effective bulk-action target. If anything is space-marked, use that.
@@ -1723,38 +2193,43 @@ struct JobsView: View {
             HStack(spacing: 6) {
                 Circle().fill(Theme.success).frame(width: 8, height: 8)
                 Text("\(running)").foregroundColor(Theme.textPrimary)
-                Text("running").foregroundColor(Theme.textSecondary)
+                    .contentTransition(.numericText())
+                Text("laufend").foregroundColor(Theme.textSecondary)
             }
             HStack(spacing: 6) {
                 Circle().fill(Theme.warning).frame(width: 8, height: 8)
                 Text("\(pending)").foregroundColor(Theme.textPrimary)
-                Text("pending").foregroundColor(Theme.textSecondary)
+                    .contentTransition(.numericText())
+                Text("wartend").foregroundColor(Theme.textSecondary)
             }
             HStack(spacing: 6) {
                 Image(systemName: "cpu").foregroundColor(Theme.purple)
                 Text("\(gpus) GPU").foregroundColor(Theme.textPrimary)
+                    .contentTransition(.numericText())
             }
             Spacer()
             if !marked.isEmpty {
                 Text("\(marked.count) markiert")
                     .foregroundColor(Theme.accent)
+                    .contentTransition(.numericText())
+                    .transition(.opacity)
             }
             if vm.runningOnly {
-                Text("nur running")
+                Text("nur laufende")
                     .foregroundColor(Theme.warning)
+                    .transition(.opacity)
             }
             Text("\(filteredCount) sichtbar")
                 .foregroundColor(Theme.textSecondary)
+                .contentTransition(.numericText())
         }
         .font(.caption.monospacedDigit())
         .padding(.horizontal, 14).padding(.vertical, 8)
         .background(Theme.surface)
-    }
-
-    /// White text on the selected (blue) row so coloured cell text stays
-    /// readable — in light mode dark/coloured text otherwise vanishes on blue.
-    private func cellFg(_ job: Job, _ base: Color) -> Color {
-        cursor == job.id ? Color.white : base
+        // Count-ups roll smoothly as the cluster changes (honours Reduce Motion).
+        .motion(Motion.smooth, value: vm.stats)
+        .motion(Motion.smooth, value: filteredCount)
+        .motion(Motion.snappy, value: marked.isEmpty)
     }
 
     private var table: some View {
@@ -1764,8 +2239,9 @@ struct JobsView: View {
         // Column widths are derived from the actual job set (not the
         // skeleton) so they reflect real Slurm output. During the initial
         // load we fall back to the skeleton widths so the table doesn't
-        // visibly resize on first data arrival.
-        let sizing = ColumnSizing(jobs: real.isEmpty ? Self.skeletonJobs : real)
+        // visibly resize on first data arrival. Memoisiert im VM — die
+        // Berechnung lief sonst bei jedem Body-Durchlauf über alle Zeilen.
+        let sizing = vm.columnSizing(skeleton: Self.skeletonJobs, propPx: propPx, monoPx: monoPx)
         return ScrollViewReader { proxy in
         Table(data, selection: $cursor, sortOrder: $sortOrder) {
             TableColumn("ID", value: \.jobId) { job in
@@ -1775,18 +2251,21 @@ struct JobsView: View {
                         .foregroundColor(marked.contains(job.id) ? Theme.accent : Theme.textSecondary.opacity(0.45))
                     Circle().fill(Theme.stateColor(job.state)).frame(width: 8, height: 8)
                     Text(job.jobId).font(.callout.monospaced())
-                        .foregroundColor(cellFg(job, Theme.textPrimary))
+                        .cellForeground(Theme.textPrimary)
                 }
             }
             .width(sizing.id + 22)
 
             TableColumn("Name", value: \.name) { job in
                 Text(job.name)
-                    .foregroundColor(cellFg(job, Theme.textPrimary))
+                    .cellForeground(Theme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            .width(min: sizing.name, ideal: sizing.name)
+            // min < ideal: Lange ML-Run-Namen dürfen die Spalte nicht starr
+            // aufblasen und Laufzeit/Node aus dem Pane schieben — der Name
+            // trunkiert ohnehin mittig.
+            .width(min: 100, ideal: sizing.name)
 
             TableColumn("Status", value: \.state) { job in
                 Text(job.state)
@@ -1799,7 +2278,7 @@ struct JobsView: View {
             .width(sizing.state)
 
             TableColumn("User", value: \.user) { job in
-                Text(job.user).foregroundColor(cellFg(job, Theme.textSecondary)).lineLimit(1)
+                Text(job.user).cellForeground(Theme.textSecondary).lineLimit(1)
             }
             .width(sizing.user)
 
@@ -1815,13 +2294,13 @@ struct JobsView: View {
             .width(sizing.qos)
 
             TableColumn("Part", value: \.partition) { job in
-                Text(job.partition).foregroundColor(cellFg(job, Theme.cyan)).font(.callout.bold())
+                Text(job.partition).cellForeground(Theme.cyan).font(.callout.bold())
             }
             .width(sizing.partition)
 
             TableColumn("GPU", value: \.gpus) { job in
                 Text(job.gpus > 0 ? "\(job.gpus)" : "—")
-                    .foregroundColor(cellFg(job, job.gpus > 0 ? Theme.purple : Theme.textSecondary))
+                    .cellForeground(job.gpus > 0 ? Theme.purple : Theme.textSecondary)
                     .font(.callout.monospacedDigit())
             }
             .width(sizing.gpu)
@@ -1829,43 +2308,67 @@ struct JobsView: View {
             TableColumn("CPU/Mem", value: \.cpus) { job in
                 HStack(spacing: 4) {
                     Text("\(job.cpus)")
-                        .foregroundColor(cellFg(job, Theme.textPrimary))
+                        .cellForeground(Theme.textPrimary)
                         .font(.callout.monospacedDigit())
                     Text("·")
-                        .foregroundColor(cellFg(job, Theme.textSecondary))
+                        .cellForeground(Theme.textSecondary)
                     Text(job.memory)
-                        .foregroundColor(cellFg(job, Theme.textSecondary))
+                        .cellForeground(Theme.textSecondary)
                         .font(.caption.monospacedDigit())
                 }
             }
             .width(sizing.cpuMem)
 
-            TableColumn("Zeit", value: \.runtime) { job in
-                Text(job.runtime).foregroundColor(cellFg(job, Theme.textSecondary)).font(.callout.monospaced())
+            // Numerischer Sortier-Schlüssel: als Text landete „59:00" über
+            // „5:00:00" und Tages-Präfixe („1-03:44:12") sortierten falsch.
+            TableColumn("Laufzeit", value: \.runtimeSeconds) { job in
+                Text(job.runtime).cellForeground(Theme.textSecondary).font(.callout.monospaced())
             }
             .width(sizing.runtime)
 
-            TableColumn("Node / Reason") { job in
+            TableColumn("Node / Grund") { job in
                 if !job.reason.isEmpty {
                     Text(job.reason)
-                        .foregroundColor(cellFg(job, Theme.warning))
+                        .cellForeground(Theme.warning)
                         .font(.callout.monospaced())
                         .lineLimit(1)
                         .truncationMode(.tail)
                 } else {
                     Text(job.node)
-                        .foregroundColor(cellFg(job, Theme.textSecondary))
+                        .cellForeground(Theme.textSecondary)
                         .font(.callout.monospaced())
                         .lineLimit(1)
                 }
             }
-            .width(min: sizing.nodeReason, ideal: sizing.nodeReason)
+            .width(min: 80, ideal: sizing.nodeReason)
         }
         // Right-click a row to copy fields — a SwiftUI Table isn't text-
         // selectable, so this is how you get a job's ID / name / node onto the
         // clipboard.
         .contextMenu(forSelectionType: Job.ID.self) { ids in
             if let id = ids.first, let job = real.first(where: { $0.id == id }) {
+                #if os(iOS)
+                // Touch-Pfad fürs iPad: Markieren/scancel/Lesezeichen per
+                // Long-Press — die Swipe-Gesten der kompakten Liste existieren
+                // in der Table nicht. „Markieren" wechselt in den Auswahl-
+                // Modus, dort übernimmt die kompakte Liste (Tap/Swipe).
+                Button {
+                    toggleMark(job)
+                    selectionMode = true
+                } label: {
+                    Label(marked.contains(job.id) ? "Entmarken" : "Markieren",
+                          systemImage: marked.contains(job.id) ? "checkmark.square" : "square")
+                }
+                if isOwn(job) && (job.isRunning || job.isPending) {
+                    Button(role: .destructive) { cancelConfirmJobs = [job] } label: {
+                        Label("scancel", systemImage: "xmark.circle")
+                    }
+                }
+                Button { bookmarks.add(Bookmark(jobId: job.jobId, label: job.name)) } label: {
+                    Label("Lesezeichen", systemImage: "bookmark")
+                }
+                Divider()
+                #endif
                 Button("Job-ID kopieren") { Clipboard.copy(job.jobId) }
                 Button("Name kopieren") { Clipboard.copy(job.name) }
                 if !job.node.isEmpty, job.node != "—" {
@@ -1883,13 +2386,16 @@ struct JobsView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        // Opaker Boden kommt von der Karte in `leadingPane`; die System-
+        // Zeilenstreifen müssen aus — sie sampeln als Vibrancy den Desktop
+        // und banden sonst durch den Content (sichtbar v. a. im Dark Mode).
+        .plainRowBackgrounds()
         .focused($focusedPane, equals: .table)
         .focusable()
         .focusEffectDisabled()
         .redacted(reason: initialLoad ? .placeholder : [])
         .shimmering(initialLoad)
-        .animation(.smooth(duration: 0.4), value: vm.initialFetchDone)
+        .motion(.smooth(duration: 0.4), value: vm.initialFetchDone)
         .overlay {
             if !initialLoad && real.isEmpty {
                 SlurmyEmptyState(
@@ -1905,86 +2411,12 @@ struct JobsView: View {
         }
     }
 
-    /// Pre-computed pixel widths for each column based on the widest content
-    /// currently in the job list. Per-char widths are conservative and the
-    /// padding only covers SwiftUI Table's actual cell gutters — no extra
-    /// reserve for sort indicators (they overlap the cell on macOS).
-    private struct ColumnSizing {
-        let id, name, state, user, qos, partition, gpu, cpuMem, runtime, nodeReason: CGFloat
-
-        init(jobs: [Job]) {
-            let propPx: CGFloat = 6.5   // SF Pro Text @ .callout, average glyph
-            let monoPx: CGFloat = 7.6   // SF Mono @ .callout
-            let cellPad: CGFloat = 16   // 8 px on each side of a Table cell
-            let pillPad: CGFloat = 14   // capsule chrome around a pill cell
-
-            func widest(_ values: [String], px: CGFloat, padding: CGFloat, minimum: CGFloat) -> CGFloat {
-                let chars = values.map(\.count).max() ?? 0
-                return max(minimum, CGFloat(chars) * px + padding)
-            }
-
-            // ID column has a status dot (8 px) + 6 px spacing in front of the text
-            self.id = widest(
-                jobs.map(\.jobId), px: monoPx,
-                padding: cellPad + 14,
-                minimum: 70
-            )
-            self.name = widest(
-                jobs.map(\.name), px: propPx,
-                padding: cellPad,
-                minimum: 100
-            )
-            self.state = widest(
-                jobs.map(\.state), px: propPx,
-                padding: cellPad + pillPad,
-                minimum: 50
-            )
-            self.user = widest(
-                jobs.map(\.user), px: propPx,
-                padding: cellPad,
-                minimum: 60
-            )
-            self.qos = widest(
-                jobs.map(\.qos), px: propPx,
-                padding: cellPad + pillPad,
-                minimum: 60
-            )
-            self.partition = widest(
-                jobs.map(\.partition), px: propPx,
-                padding: cellPad,
-                minimum: 38
-            )
-            self.gpu = widest(
-                jobs.map { $0.gpus > 0 ? "\($0.gpus)" : "—" }, px: monoPx,
-                padding: cellPad,
-                minimum: 38
-            )
-            self.cpuMem = widest(
-                jobs.map { "\($0.cpus) · \($0.memory)" }, px: monoPx,
-                padding: cellPad,
-                minimum: 75
-            )
-            self.runtime = widest(
-                jobs.map(\.runtime), px: monoPx,
-                padding: cellPad,
-                minimum: 70
-            )
-            let reasonWidth = widest(
-                jobs.map(\.reason), px: propPx, padding: cellPad, minimum: 0
-            )
-            let nodeWidth = widest(
-                jobs.map(\.node), px: monoPx, padding: cellPad, minimum: 0
-            )
-            self.nodeReason = max(80, max(reasonWidth, nodeWidth))
-        }
-    }
-
     // MARK: – Stats
 
-    private var running: Int { vm.jobs.filter(\.isRunning).count }
-    private var pending: Int { vm.jobs.filter(\.isPending).count }
-    private var gpus: Int { vm.jobs.filter(\.isRunning).reduce(0) { $0 + $1.gpus } }
-    private var filteredCount: Int { vm.filtered().count }
+    private var running: Int { vm.stats.running }
+    private var pending: Int { vm.stats.pending }
+    private var gpus: Int { vm.stats.gpus }
+    private var filteredCount: Int { vm.filteredJobs.count }
 
     /// Plausibly-shaped job rows used while the first squeue fetch is in
     /// flight. Combined with `.redacted(.placeholder)` they render as grey
@@ -2005,6 +2437,153 @@ struct JobsView: View {
             node: "—",
             reason: ""
         )
+    }
+}
+
+/// Pre-computed pixel widths for each column based on the widest content
+/// currently in the job list. Per-char widths are conservative and the
+/// padding only covers SwiftUI Table's actual cell gutters — no extra
+/// reserve for sort indicators (they overlap the cell on macOS).
+/// Auf File-Ebene (nicht in JobsView), damit das ViewModel das Ergebnis
+/// memoizen kann; die Zeichenbreiten kommen als @ScaledMetric-Werte herein
+/// und skalieren so mit der Textgröße.
+private struct ColumnSizing {
+    let id, name, state, user, qos, partition, gpu, cpuMem, runtime, nodeReason: CGFloat
+
+    init(jobs: [Job], propPx: CGFloat = 6.5, monoPx: CGFloat = 7.6) {
+        let cellPad: CGFloat = 16   // 8 px on each side of a Table cell
+        let pillPad: CGFloat = 14   // capsule chrome around a pill cell
+        // Obergrenzen skalieren mit der Textgröße mit (Basis: propPx 6.5).
+        let capScale = propPx / 6.5
+
+        func widest(_ values: [String], px: CGFloat, padding: CGFloat, minimum: CGFloat) -> CGFloat {
+            let chars = values.map(\.count).max() ?? 0
+            return max(minimum, CGFloat(chars) * px + padding)
+        }
+
+        // ID column has a status dot (8 px) + 6 px spacing in front of the text
+        self.id = widest(
+            jobs.map(\.jobId), px: monoPx,
+            padding: cellPad + 14,
+            minimum: 70
+        )
+        // Gedeckelt: 36+-Zeichen-ML-Run-Namen drückten sonst die hinteren
+        // Spalten (Laufzeit, Node/Reason) aus dem sichtbaren Bereich.
+        self.name = min(
+            widest(jobs.map(\.name), px: propPx, padding: cellPad, minimum: 100),
+            240 * capScale
+        )
+        self.state = widest(
+            jobs.map(\.state), px: propPx,
+            padding: cellPad + pillPad,
+            minimum: 50
+        )
+        self.user = widest(
+            jobs.map(\.user), px: propPx,
+            padding: cellPad,
+            minimum: 60
+        )
+        self.qos = widest(
+            jobs.map(\.qos), px: propPx,
+            padding: cellPad + pillPad,
+            minimum: 60
+        )
+        self.partition = widest(
+            jobs.map(\.partition), px: propPx,
+            padding: cellPad,
+            minimum: 38
+        )
+        self.gpu = widest(
+            jobs.map { $0.gpus > 0 ? "\($0.gpus)" : "—" }, px: monoPx,
+            padding: cellPad,
+            minimum: 38
+        )
+        self.cpuMem = widest(
+            jobs.map { "\($0.cpus) · \($0.memory)" }, px: monoPx,
+            padding: cellPad,
+            minimum: 75
+        )
+        self.runtime = widest(
+            jobs.map(\.runtime), px: monoPx,
+            padding: cellPad,
+            minimum: 70
+        )
+        let reasonWidth = widest(
+            jobs.map(\.reason), px: propPx, padding: cellPad, minimum: 0
+        )
+        let nodeWidth = widest(
+            jobs.map(\.node), px: monoPx, padding: cellPad, minimum: 0
+        )
+        self.nodeReason = min(max(80, max(reasonWidth, nodeWidth)), 220 * capScale)
+    }
+}
+
+/// Zellen-Vordergrund für die Jobs-Table. Ersetzt das frühere cursor-basierte
+/// Hardcoded-Weiß: SwiftUI setzt `backgroundProminence == .increased` NUR für
+/// die wirklich betonte (akzentfarbene) Selektion — bei der grauen, unbetonten
+/// Auswahl (Tabelle nicht First Responder, z. B. Fokus im Detail/Suchfeld)
+/// bleibt die Grundfarbe lesbar, statt Weiß auf Hellgrau zu rendern.
+private struct CellForeground: ViewModifier {
+    @Environment(\.backgroundProminence) private var prominence
+    let base: Color
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(prominence == .increased ? Color.white : base)
+    }
+}
+
+private extension View {
+    func cellForeground(_ base: Color) -> some View {
+        modifier(CellForeground(base: base))
+    }
+
+    /// `.searchFocused` existiert erst ab macOS 15 / iOS 17. Auf macOS 14 ist
+    /// das Binding inert — dort fokussiert der ⌘F-Handler das Toolbar-
+    /// NSSearchField direkt (siehe `legacyFocusToolbarSearchField`).
+    @ViewBuilder
+    func searchFocusedCompat(_ binding: FocusState<Bool>.Binding) -> some View {
+        if #available(macOS 15.0, iOS 17.0, *) {
+            self.searchFocused(binding)
+        } else {
+            self
+        }
+    }
+}
+
+// MARK: – Numerische Sortier-Schlüssel
+// `runtime` ([DD-]HH:MM:SS) und `memory` (Zahl + Einheits-Suffix) sind
+// Anzeige-Strings — als Text sortiert landet „59:00" über „5:00:00" und
+// „512M" über „8G". Diese Schlüssel sortieren numerisch; angezeigt wird
+// weiterhin der Original-String.
+private extension Job {
+    /// Laufzeit in Sekunden (squeue %M: „MM:SS", „HH:MM:SS", „D-HH:MM:SS").
+    var runtimeSeconds: Int {
+        var days = 0
+        var clock = runtime[...]
+        if let dash = clock.firstIndex(of: "-") {
+            days = Int(clock[..<dash]) ?? 0
+            clock = clock[clock.index(after: dash)...]
+        }
+        var seconds = 0
+        for part in clock.split(separator: ":") {
+            seconds = seconds * 60 + (Int(part) ?? 0)
+        }
+        return days * 86_400 + seconds
+    }
+
+    /// Speicher in MB (squeue %m: Zahl + K/M/G/T, optionaler n/c-Qualifier).
+    var memoryMB: Double {
+        var s = Substring(memory.trimmingCharacters(in: .whitespaces))
+        if s.hasSuffix("n") || s.hasSuffix("c") { s = s.dropLast() }
+        var multiplier = 1.0
+        switch s.last {
+        case "K", "k": multiplier = 1.0 / 1024;  s = s.dropLast()
+        case "M", "m": multiplier = 1;           s = s.dropLast()
+        case "G", "g": multiplier = 1024;        s = s.dropLast()
+        case "T", "t": multiplier = 1024 * 1024; s = s.dropLast()
+        default: break
+        }
+        return (Double(s) ?? 0) * multiplier
     }
 }
 
@@ -2075,7 +2654,7 @@ extension View {
                 .frame(width: 3)
                 .padding(.vertical, 5)
                 .allowsHitTesting(false)
-                .animation(.smooth(duration: 0.15), value: active)
+                .motion(.smooth(duration: 0.15), value: active)
         }
     }
 }

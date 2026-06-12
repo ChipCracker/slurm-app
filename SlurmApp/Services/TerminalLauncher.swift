@@ -67,10 +67,17 @@ enum TerminalLauncher {
 
     #if os(macOS)
     private static func runInTerminal(_ command: String) {
+        // Escape backslash FIRST, then the double-quote, so the command can't
+        // break out of the AppleScript string literal (AppleScript injection).
+        // Escaping only `"` would let a stray backslash swallow the closing
+        // quote or inject AppleScript.
+        let escaped = command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
         let script = """
         tell application "Terminal"
             activate
-            do script "\(command.replacingOccurrences(of: "\"", with: "\\\""))"
+            do script "\(escaped)"
         end tell
         """
         guard let appleScript = NSAppleScript(source: script) else { return }

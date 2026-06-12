@@ -8,8 +8,19 @@ enum KeychainError: Error {
 
 final class KeychainStore {
     static let shared = KeychainStore()
-    private let service = "de.cwitzl.slurmapp"
+    // Per-bundle-id service so the dev build (de.cwitzl.slurmapp.dev) and the
+    // stable build keep separate credentials, matching the documented dev/prod
+    // isolation. Falls back to the stable id if somehow unavailable.
+    private let service = Bundle.main.bundleIdentifier ?? "de.cwitzl.slurmapp"
+    /// Older builds stored credentials under the hardcoded Release id for BOTH
+    /// flavours. Read once as a fallback so switching to per-bundle isolation
+    /// doesn't orphan existing logins.
+    private static let legacyService = "de.cwitzl.slurmapp"
     private let account = "kiz0-credentials"
+    // Available after first unlock (so auto-connect works post-reboot) but
+    // ThisDeviceOnly so the secret never leaves the device via iCloud Keychain
+    // or an encrypted backup.
+    private let accessible = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
     func saveCredentials(_ creds: Credentials) throws {
         let data = try JSONEncoder().encode(creds)
@@ -21,13 +32,15 @@ final class KeychainStore {
         ]
 
         let attributes: [String: Any] = [
-            kSecValueData as String: data
+            kSecValueData as String:       data,
+            kSecAttrAccessible as String:  accessible,
         ]
 
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecItemNotFound {
             var addQuery = query
             addQuery[kSecValueData as String] = data
+            addQuery[kSecAttrAccessible as String] = accessible
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
             guard addStatus == errSecSuccess else { throw KeychainError.unhandled(addStatus) }
         } else if updateStatus != errSecSuccess {
@@ -36,6 +49,17 @@ final class KeychainStore {
     }
 
     func loadCredentials() throws -> Credentials? {
+        if let creds = try load(from: service) { return creds }
+        // One-time migration: adopt credentials saved by an older build under the
+        // legacy (shared) service into this build's per-bundle service.
+        if service != Self.legacyService, let legacy = try load(from: Self.legacyService) {
+            try? saveCredentials(legacy)
+            return legacy
+        }
+        return nil
+    }
+
+    private func load(from service: String) throws -> Credentials? {
         let query: [String: Any] = [
             kSecClass as String:       kSecClassGenericPassword,
             kSecAttrService as String: service,

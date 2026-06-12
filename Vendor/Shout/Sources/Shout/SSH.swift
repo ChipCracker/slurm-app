@@ -52,14 +52,30 @@ public class SSH {
     /// - Parameters:
     ///   - host: the host to connect to
     ///   - port: the port to connect to; default 22
+    ///   - timeout: milliseconds the blocking TCP connect *and* the libssh2
+    ///     handshake may take before failing. 0 = wait forever (default).
+    ///     Set this so a half-open / black-holing link after sleep/wake can't
+    ///     hang the connection rebuild indefinitely.
     /// - Throws: SSHError if the SSH session couldn't be created
-    public init(host: String, port: Int32 = 22) throws {
+    public init(host: String, port: Int32 = 22, timeout: Int = 0) throws {
         self.sock = try Socket.create()
         self.session = try Session()
-        
+
         session.blocking = 1
-        try sock.connect(to: host, port: port)
+        // Apply the timeout BEFORE the handshake — libssh2's default is 0
+        // (forever), so an unset timeout means a stalled handshake blocks the
+        // caller's thread (here: the serial SSH queue) with no recovery.
+        if timeout > 0 { session.timeout = timeout }
+        try sock.connect(to: host, port: port, timeout: timeout > 0 ? UInt(timeout) : 0)
         try session.handshake(over: sock)
+    }
+
+    /// SHA-256 host-key fingerprint as a lowercase hex string (no separators),
+    /// available after the handshake. nil if libssh2 has no key. Use for TOFU
+    /// pinning so a later MITM presenting a different key is detected.
+    public var hostKeyFingerprintSHA256: String? {
+        guard let data = session.hostKeyHashSHA256() else { return nil }
+        return data.map { String(format: "%02x", $0) }.joined()
     }
     
     /// Authenticate the session using a public/private key pair
@@ -146,6 +162,48 @@ public class SSH {
             ongoing += output
         }
         return (status, ongoing)
+    }
+
+    /// Like `capture`, but drains the **stderr** stream separately so a failed
+    /// command's error message isn't lost. Returns stdout and stderr apart, plus
+    /// the exit status. Used by the app to surface real diagnostics instead of a
+    /// blank "(empty)" failure.
+    public func captureWithError(_ command: String) throws -> (status: Int32, stdout: String, stderr: String) {
+        let channel = try session.openCommandChannel()
+        if let ptyType = ptyType {
+            try channel.requestPty(type: ptyType.rawValue)
+        }
+        try channel.exec(command: command)
+
+        var outData = Data()
+        var errData = Data()
+        var outDone = false
+        var errDone = false
+        // Interleave reads of both streams so neither buffer can fill and stall
+        // the other (libssh2 blocks a write side when a stream buffer is full).
+        while !outDone || !errDone {
+            if !outDone {
+                switch channel.readData() {
+                case .data(let d): outData.append(d)
+                case .done:        outDone = true
+                case .eagain:      break
+                case .error(let e): throw e
+                }
+            }
+            if !errDone {
+                switch channel.readError() {
+                case .data(let d): errData.append(d)
+                case .done:        errDone = true
+                case .eagain:      break
+                case .error(let e): throw e
+                }
+            }
+        }
+
+        try channel.close()
+        let stdout = String(data: outData, encoding: .utf8) ?? ""
+        let stderr = String(data: errData, encoding: .utf8) ?? ""
+        return (channel.exitStatus(), stdout, stderr)
     }
     
     /// Execute a command on the remote server

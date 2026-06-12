@@ -28,7 +28,7 @@ struct SubmitJobView: View {
             }
             .navigationTitle("Job einreichen")
             .inlineNavTitle()
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Schließen") { dismiss() }

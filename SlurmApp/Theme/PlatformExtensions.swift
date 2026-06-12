@@ -10,15 +10,12 @@ extension View {
         #endif
     }
 
-    /// Färbt den Navigations-Bar-Hintergrund (iOS) passend zum dunklen Theme.
-    /// macOS hat keine Nav-Bar → no-op.
-    func navBarBackground(_ color: Color) -> some View {
-        #if os(iOS)
-        // No forced `.toolbarColorScheme(.dark)` — the bar (and its title text)
-        // follows the active appearance, so the nav bar stays legible in light
-        // mode instead of rendering white text on a light background.
-        self.toolbarBackground(color, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+    /// macOS: System-Zeilenstreifen der `Table` abschalten — sie rendern als
+    /// Behind-Window-Vibrancy und lassen den Desktop durch den Content banden,
+    /// sobald das Fenster eine Glas-Ebene hat. iOS kennt den Modifier nicht.
+    func plainRowBackgrounds() -> some View {
+        #if os(macOS)
+        self.alternatingRowBackgrounds(.disabled)
         #else
         self
         #endif

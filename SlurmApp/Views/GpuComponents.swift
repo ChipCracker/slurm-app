@@ -22,7 +22,7 @@ struct GpuAllocationMiniStrip: View {
                 EmptyView()
             }
         }
-        .animation(.smooth(duration: 0.4), value: usage.isEmpty)
+        .motion(.smooth(duration: 0.4), value: usage.isEmpty)
     }
 
     private func scroller(_ data: [PartitionUsage]) -> some View {
@@ -40,6 +40,12 @@ struct GpuAllocationMiniStrip: View {
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
         .help("Inspector öffnen")
+        // Die Tap-Geste allein ist für VoiceOver unsichtbar — Button-Trait +
+        // explizite Aktion machen das Wieder-Öffnen des Inspectors zugänglich.
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("GPU-Auslastung")
+        .accessibilityHint("Inspector öffnen")
+        .accessibilityAction { onTap() }
     }
 
     private func chip(_ u: PartitionUsage) -> some View {
@@ -82,7 +88,7 @@ struct DiskQuotasMiniStrip: View {
                 EmptyView()
             }
         }
-        .animation(.smooth(duration: 0.4), value: quotas.isEmpty)
+        .motion(.smooth(duration: 0.4), value: quotas.isEmpty)
     }
 
     private func scroller(_ data: [DiskQuota]) -> some View {
@@ -100,6 +106,11 @@ struct DiskQuotasMiniStrip: View {
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
         .help("Inspector öffnen")
+        // Siehe GpuAllocationMiniStrip: Trait + Aktion für VoiceOver.
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Disk-Quotas")
+        .accessibilityHint("Inspector öffnen")
+        .accessibilityAction { onTap() }
     }
 
     private func chip(_ q: DiskQuota) -> some View {
@@ -180,20 +191,30 @@ struct GpuAllocationStrip: View {
                 EmptyView()
             }
         }
-        .animation(.smooth(duration: 0.4), value: usage.isEmpty)
+        .motion(.smooth(duration: 0.4), value: usage.isEmpty)
     }
 
     private func content(_ data: [PartitionUsage]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("GPU Allocation")
+            // Begriff deckungsgleich mit dem Dashboard-Widget („GPU-Belegung").
+            Text("GPU-Belegung")
                 .font(.caption.bold())
                 .foregroundColor(Theme.textPrimary)
             ForEach(data) { u in
-                GpuPartitionPill(usage: u)
-                    .contentShape(Rectangle())
-                    .onTapGesture { onSelect?(u.partition) }
-                    .paneFocusRing(focusedPartition == u.partition)
-                    .help("Partition-Details anzeigen")
+                // Echter Button statt onTapGesture: liefert den Button-Trait
+                // und eine VoiceOver-Aktion — sonst wäre der Partition-Deep-Dive
+                // für VoiceOver unerreichbar.
+                Button {
+                    onSelect?(u.partition)
+                } label: {
+                    GpuPartitionPill(usage: u)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .paneFocusRing(focusedPartition == u.partition)
+                .help("Partition-Details anzeigen")
+                .accessibilityLabel("Partition \(u.partition): \(u.allocatedGpus) von \(u.totalGpus) GPUs belegt")
+                .accessibilityHint("Öffnet Partition-Details")
             }
             GpuLegend()
                 .padding(.top, 2)
@@ -246,7 +267,7 @@ struct GpuPartitionPill: View {
                     miniLegend(seg.label, count: seg.count, color: seg.color, symbol: seg.symbol)
                 }
                 Spacer(minLength: 0)
-                miniLegend("frei", count: usage.availableGpus, color: Theme.gpuFree, symbol: Self.freeSymbol)
+                miniLegend(String(localized: "frei"), count: usage.availableGpus, color: Theme.gpuFree, symbol: Self.freeSymbol)
             }
             .help("🔒 = garantiert · ⏏ = preemptierbar (verdrängbar) · ◌ = frei")
         }
@@ -269,19 +290,20 @@ struct GpuPartitionPill: View {
     }
 
     /// Non-overlapping buckets matching the four bar segments, skipping zeros.
+    /// String-Parameter lokalisieren nicht automatisch → String(localized:).
     private var segmentLegend: [LegendSeg] {
         var segs: [LegendSeg] = []
         if usage.ownNonPreemptible > 0 {
-            segs.append(.init(label: "mine", count: usage.ownNonPreemptible, color: Theme.ownNonPreempt, symbol: Self.guaranteedSymbol))
+            segs.append(.init(label: String(localized: "meine"), count: usage.ownNonPreemptible, color: Theme.ownNonPreempt, symbol: Self.guaranteedSymbol))
         }
         if usage.ownPreemptible > 0 {
-            segs.append(.init(label: "mine", count: usage.ownPreemptible, color: Theme.ownPreempt, symbol: Self.preemptSymbol))
+            segs.append(.init(label: String(localized: "meine"), count: usage.ownPreemptible, color: Theme.ownPreempt, symbol: Self.preemptSymbol))
         }
         if usage.otherNonPreemptible > 0 {
-            segs.append(.init(label: "belegt", count: usage.otherNonPreemptible, color: Theme.otherNonPreempt, symbol: Self.guaranteedSymbol))
+            segs.append(.init(label: String(localized: "belegt"), count: usage.otherNonPreemptible, color: Theme.otherNonPreempt, symbol: Self.guaranteedSymbol))
         }
         if usage.otherPreemptible > 0 {
-            segs.append(.init(label: "belegt", count: usage.otherPreemptible, color: Theme.otherPreempt, symbol: Self.preemptSymbol))
+            segs.append(.init(label: String(localized: "belegt"), count: usage.otherPreemptible, color: Theme.otherPreempt, symbol: Self.preemptSymbol))
         }
         return segs
     }
@@ -292,6 +314,10 @@ struct GpuPartitionPill: View {
             Text("\(count) \(label)")
                 .font(.caption2)
                 .foregroundColor(Theme.textSecondary)
+                // Bei Platznot schrumpfen statt buchstabenweise umbrechen
+                // (bis zu 5 Chips müssen in schmale Inspector-Breiten passen).
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             if let symbol {
                 Image(systemName: symbol)
                     .font(.system(size: 7))
@@ -356,14 +382,14 @@ struct DiskQuotasCard: View {
                     .transition(.opacity)
             }
         }
-        .animation(.smooth(duration: 0.4), value: quotas.isEmpty)
-        .animation(.smooth(duration: 0.4), value: isLoading)
+        .motion(.smooth(duration: 0.4), value: quotas.isEmpty)
+        .motion(.smooth(duration: 0.4), value: isLoading)
     }
 
     private func content(_ data: [DiskQuota]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Disk Quotas").font(.caption.bold()).foregroundColor(Theme.textPrimary)
+                Text("Disk-Quotas").font(.caption.bold()).foregroundColor(Theme.textPrimary)
                 Spacer()
                 Text("\(data.count) FS").font(.caption2).foregroundColor(Theme.textSecondary)
             }
@@ -413,7 +439,8 @@ struct DiskQuotasCard: View {
             }
             .frame(height: 5)
             HStack {
-                Text(String(format: "%.0f%% belegt", q.usageRatio * 100))
+                // Lokalisiertes Format — Text(String(format:)) liefe am Katalog vorbei.
+                Text(String(format: String(localized: "%.0f%% belegt"), q.usageRatio * 100))
                 Spacer()
                 Text("Limit \(q.limit)")
             }
@@ -425,16 +452,18 @@ struct DiskQuotasCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
-    /// Shorten paths like `141.75.89.64:/mnt/mpatha/home/user` to `…/home/user`.
+    /// Shorten paths like `141.75.89.64:/mnt/mpatha/home/user` to
+    /// `141.75.89.64:…/home/user`. Keeps the server/volume prefix and the last
+    /// two path components, so two mounts ending in the same directory (e.g.
+    /// `/scratch/user` vs. `/nfs1/scratch/user`) stay distinguishable.
     private func shortFs(_ s: String) -> String {
-        if let lastSlash = s.range(of: "/", options: .backwards) {
-            let tail = String(s[lastSlash.lowerBound...])
-            if tail.count >= 3 {
-                let head = String(s.prefix(while: { $0 != "/" && $0 != ":" }))
-                return head.isEmpty ? tail : tail
-            }
-        }
-        return s
+        let head = String(s.prefix(while: { $0 != "/" && $0 != ":" }))   // Server/Volume
+        let path = s.dropFirst(head.count).drop(while: { $0 == ":" })
+        let comps = path.split(separator: "/")
+        // Schon kurz genug → unverändert anzeigen (inkl. evtl. Server-Präfix).
+        guard comps.count > 2 else { return s }
+        let tail = "/" + comps.suffix(2).joined(separator: "/")
+        return head.isEmpty ? "…" + tail : head + ":…" + tail
     }
 }
 
@@ -470,14 +499,15 @@ struct GpuHoursCard: View {
             }
         }
         .paneFocusRing(isFocused)
-        .animation(.smooth(duration: 0.4), value: entries.isEmpty)
-        .animation(.smooth(duration: 0.4), value: isLoading)
+        .motion(.smooth(duration: 0.4), value: entries.isEmpty)
+        .motion(.smooth(duration: 0.4), value: isLoading)
     }
 
     private func content(_ data: [GpuHoursEntry]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("GPU Hours")
+                // Begriff deckungsgleich mit Dashboard-Widget und Voll-Sheet.
+                Text("GPU-Stunden")
                     .font(.caption.bold())
                     .foregroundColor(Theme.textPrimary)
                 Spacer()
@@ -491,16 +521,23 @@ struct GpuHoursCard: View {
                 }
                 if let onRefresh {
                     Button(action: onRefresh) {
-                        if isLoading {
-                            ProgressView().controlSize(.mini)
-                        } else {
-                            Image(systemName: "arrow.clockwise").font(.caption2)
+                        Group {
+                            if isLoading {
+                                ProgressView().controlSize(.mini)
+                            } else {
+                                Image(systemName: "arrow.clockwise").font(.caption2)
+                            }
                         }
+                        // 44pt-Trefferfläche auf iOS: Das nackte caption2-Glyph
+                        // (~14pt) liegt mitten auf der Karte, deren ganze Fläche
+                        // das Voll-Sheet öffnet — knapp daneben getippt wirkte
+                        // wie ein ignorierter Refresh.
+                        .iosTouchTarget()
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(Theme.textSecondary)
                     .disabled(isLoading)
-                    .help("GPU-Hours aktualisieren")
+                    .help("GPU-Stunden aktualisieren")
                 }
             }
             if data.isEmpty {
@@ -520,6 +557,11 @@ struct GpuHoursCard: View {
         .contentShape(Rectangle())
         .onTapGesture { onOpenFullView?() }
         .help(onOpenFullView == nil ? "" : "Alle Nutzer + Zeitraum")
+        // Kein Button-Wrap (die Karte enthält den Refresh-Button), aber
+        // Trait + Aktion, damit VoiceOver das Voll-Sheet öffnen kann.
+        .accessibilityAddTraits(onOpenFullView == nil ? [] : .isButton)
+        .accessibilityHint(onOpenFullView == nil ? "" : "Öffnet alle Nutzer und die Zeitraum-Auswahl")
+        .accessibilityAction { onOpenFullView?() }
     }
 
     static let skeletonEntries: [GpuHoursEntry] = (1...8).map { i in
@@ -559,18 +601,19 @@ struct GpuHoursCard: View {
 struct GpuLegend: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
+            // String-Parameter lokalisieren nicht automatisch → String(localized:).
             HStack(spacing: 12) {
-                chip(color: Theme.ownNonPreempt, text: "mine", symbol: GpuPartitionPill.guaranteedSymbol)
-                chip(color: Theme.ownPreempt, text: "mine", symbol: GpuPartitionPill.preemptSymbol)
-                chip(color: Theme.otherNonPreempt, text: "belegt", symbol: GpuPartitionPill.guaranteedSymbol)
-                chip(color: Theme.otherPreempt, text: "belegt", symbol: GpuPartitionPill.preemptSymbol)
-                chip(color: Theme.gpuFree, text: "frei", symbol: GpuPartitionPill.freeSymbol)
+                chip(color: Theme.ownNonPreempt, text: String(localized: "meine"), symbol: GpuPartitionPill.guaranteedSymbol)
+                chip(color: Theme.ownPreempt, text: String(localized: "meine"), symbol: GpuPartitionPill.preemptSymbol)
+                chip(color: Theme.otherNonPreempt, text: String(localized: "belegt"), symbol: GpuPartitionPill.guaranteedSymbol)
+                chip(color: Theme.otherPreempt, text: String(localized: "belegt"), symbol: GpuPartitionPill.preemptSymbol)
+                chip(color: Theme.gpuFree, text: String(localized: "frei"), symbol: GpuPartitionPill.freeSymbol)
                 Spacer()
             }
             HStack(spacing: 10) {
-                caption(GpuPartitionPill.guaranteedSymbol, "garantiert")
-                caption(GpuPartitionPill.preemptSymbol, "preemptierbar")
-                caption(GpuPartitionPill.freeSymbol, "frei")
+                caption(GpuPartitionPill.guaranteedSymbol, String(localized: "garantiert"))
+                caption(GpuPartitionPill.preemptSymbol, String(localized: "preemptierbar"))
+                caption(GpuPartitionPill.freeSymbol, String(localized: "frei"))
             }
             .font(.caption2)
             .foregroundColor(Theme.textSecondary)

@@ -1,0 +1,1944 @@
+{
+  "sourceLanguage" : "de",
+  "strings" : {
+    "Schrift vergrößern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Increase text size" } }
+      }
+    },
+    "Schrift verkleinern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Decrease text size" } }
+      }
+    },
+    "Originalgröße" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Actual size" } }
+      }
+    },
+    "Jobs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jobs" } }
+      }
+    },
+    "Lesezeichen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bookmarks" } }
+      }
+    },
+    "Einstellungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } }
+      }
+    },
+    "Slurmy – die leuchtende Cluster Raupe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Slurmy – the glowing cluster caterpillar" } }
+      }
+    },
+    "nicht verbunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "not connected" } }
+      }
+    },
+    "verbinde…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "connecting…" } }
+      }
+    },
+    "verbunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "connected" } }
+      }
+    },
+    "Verbindung instabil…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connection unstable…" } }
+      }
+    },
+    "Fehler: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Error: %@" } }
+      }
+    },
+    "Passwort" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Password" } }
+      }
+    },
+    "Privater Schlüssel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Private key" } }
+      }
+    },
+    "Automatisch" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Automatic" } }
+      }
+    },
+    "Hell" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Light" } }
+      }
+    },
+    "Dunkel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Dark" } }
+      }
+    },
+    "Blau" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Blue" } }
+      }
+    },
+    "Türkis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Teal" } }
+      }
+    },
+    "Grün" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Green" } }
+      }
+    },
+    "Violett" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Purple" } }
+      }
+    },
+    "Rosé" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Rose" } }
+      }
+    },
+    "Graphit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Graphite" } }
+      }
+    },
+    "Akzentfarbe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Accent color" } }
+      }
+    },
+    "Niedriger Kontrast (%@:1) – evtl. schwer lesbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Low contrast (%@:1) – may be hard to read." } }
+      }
+    },
+    "App beenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Quit app" } }
+      }
+    },
+    "Hilfe anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show help" } }
+      }
+    },
+    "Suche fokussieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Focus search" } }
+      }
+    },
+    "Sidebar fokussieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Focus sidebar" } }
+      }
+    },
+    "Inspector ein-/ausklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Toggle inspector" } }
+      }
+    },
+    "Sektion: Jobs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Section: Jobs" } }
+      }
+    },
+    "Sektion: Lesezeichen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Section: Bookmarks" } }
+      }
+    },
+    "Sektion: Einstellungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Section: Settings" } }
+      }
+    },
+    "Aktualisieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Refresh" } }
+      }
+    },
+    "Alle / meine Jobs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "All / my jobs" } }
+      }
+    },
+    "Nur laufende" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Running only" } }
+      }
+    },
+    "Neuer Batch-Job" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New batch job" } }
+      }
+    },
+    "Interaktive Session" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Interactive session" } }
+      }
+    },
+    "Attach zum Job" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Attach to job" } }
+      }
+    },
+    "Job beenden (scancel)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Terminate job (scancel)" } }
+      }
+    },
+    "Lesezeichen setzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add bookmark" } }
+      }
+    },
+    "Auswahl / Modal schliessen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clear selection / close modal" } }
+      }
+    },
+    "Nächste Partition (Sheet)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Next partition (sheet)" } }
+      }
+    },
+    "Knoten-Übersicht (alle Partitionen)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Node overview (all partitions)" } }
+      }
+    },
+    "Skript editieren (Terminal)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Edit script (Terminal)" } }
+      }
+    },
+    "SSH-Shell in Terminal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "SSH shell in Terminal" } }
+      }
+    },
+    "QoS ändern (Auswahl)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Change QoS (selection)" } }
+      }
+    },
+    "Partition ändern (Auswahl)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Change partition (selection)" } }
+      }
+    },
+    "Sort-Spalte zurück" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Previous sort column" } }
+      }
+    },
+    "Sort-Spalte vor" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Next sort column" } }
+      }
+    },
+    "Sort-Richtung toggle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Toggle sort direction" } }
+      }
+    },
+    "Log Follow-Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Log follow mode" } }
+      }
+    },
+    "Zur Live-GPU-Card" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "To live GPU card" } }
+      }
+    },
+    "Zur Log-Card" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "To log card" } }
+      }
+    },
+    "Active Log kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy active log" } }
+      }
+    },
+    "stderr/stdout umschalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Toggle stderr/stdout" } }
+      }
+    },
+    "Erster / letzter Job" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "First / last job" } }
+      }
+    },
+    "Tabelle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Table" } }
+      }
+    },
+    "Sortieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sorting" } }
+      }
+    },
+    "Job-Detail" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Job detail" } }
+      }
+    },
+    "Tastatur-Navigation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Keyboard navigation" } }
+      }
+    },
+    "Schliessen (Esc)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Close (Esc)" } }
+      }
+    },
+    "Job auswählen (Tabelle)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select job (table)" } }
+      }
+    },
+    "Mehrere Jobs auswählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select multiple jobs" } }
+      }
+    },
+    "Alle Jobs auswählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select all jobs" } }
+      }
+    },
+    "Leertaste" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Space" } }
+      }
+    },
+    "Job markieren / Modal öffnen-schliessen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Mark job / open-close modal" } }
+      }
+    },
+    "Inspector-Item wählen (Pane fokussiert)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select inspector item (pane focused)" } }
+      }
+    },
+    "Pane wechseln" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Switch pane" } }
+      }
+    },
+    "Log vergrössert öffnen/schliessen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open/close enlarged log" } }
+      }
+    },
+    "Klick" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Click" } }
+      }
+    },
+    "Log-Fenster vergrössert öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open enlarged log window" } }
+      }
+    },
+    "Verbinde mit dem Cluster…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connecting to the cluster…" } }
+      }
+    },
+    "Lädt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading" } }
+      }
+    },
+    "Verbindung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connection" } }
+      }
+    },
+    "Willkommen bei Slurmy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Welcome to Slurmy" } }
+      }
+    },
+    "SSH-Verbindung zum kiz0-Login-Node" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "SSH connection to the kiz0 login node" } }
+      }
+    },
+    "Ersetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Replace" } }
+      }
+    },
+    "Entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Remove" } }
+      }
+    },
+    "PEM einfügen (wird nach Bestätigung verborgen)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Paste PEM (hidden after confirmation)" } }
+      }
+    },
+    "Übernehmen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Apply" } }
+      }
+    },
+    "Abbrechen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } }
+      }
+    },
+    "Datei wählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose file" } }
+      }
+    },
+    "Standard aus ~/.ssh" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Defaults from ~/.ssh" } }
+      }
+    },
+    "Schlüssel hinterlegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Key stored" } }
+      }
+    },
+    "Unbekannt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unknown" } }
+      }
+    },
+    "%@ · %lld Bytes · Inhalt wird nicht angezeigt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ · %lld bytes · content is not displayed" } }
+      }
+    },
+    "Datei konnte nicht gelesen werden: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not read file: %@" } }
+      }
+    },
+    "Konnte %@ nicht lesen: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not read %1$@: %2$@" } }
+      }
+    },
+    "Teste…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Testing…" } }
+      }
+    },
+    "Verbindung testen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test connection" } }
+      }
+    },
+    "Verbinden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connect" } }
+      }
+    },
+    "Verbinde mit %@:%lld…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connecting to %1$@:%2$lld…" } }
+      }
+    },
+    "✓ Verbindung ok\n%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "✓ Connection OK\n%@" } }
+      }
+    },
+    "✗ Fehler: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "✗ Error: %@" } }
+      }
+    },
+    "Nicht verbunden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not connected." } }
+      }
+    },
+    "Befehl fehlgeschlagen (rc=%d): %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Command failed (rc=%1$d): %2$@" } }
+      }
+    },
+    "Authentifizierung fehlgeschlagen: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Authentication failed: %@" } }
+      }
+    },
+    "Verbindung fehlgeschlagen: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connection failed: %@" } }
+      }
+    },
+    "Auth-Methode wird nicht unterstützt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Auth method is not supported." } }
+      }
+    },
+    "Host-Key stimmt nicht überein – mögliche Man-in-the-Middle-Attacke. Verbindung aus Sicherheitsgründen abgebrochen.\nErwartet: %@\nErhalten: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Host key mismatch – possible man-in-the-middle attack. Connection aborted for security reasons.\nExpected: %1$@\nReceived: %2$@" } }
+      }
+    },
+    "Privater Schlüssel fehlt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Private key missing." } }
+      }
+    },
+    "Keine SSH-Verbindung." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No SSH connection." } }
+      }
+    },
+    "Zugangsdaten löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete credentials?" } }
+      }
+    },
+    "Löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete" } }
+      }
+    },
+    "Host, Benutzer und Schlüssel werden aus dem Schlüsselbund entfernt. Die Verbindung wird getrennt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Host, user and key will be removed from the keychain. The connection will be disconnected." } }
+      }
+    },
+    "Slurm-Client für iPhone, iPad & Mac" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Slurm client for iPhone, iPad & Mac" } }
+      }
+    },
+    "Read-only by default · mutierende Befehle nur nach Bestätigung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Read-only by default · mutating commands only after confirmation" } }
+      }
+    },
+    "Darstellung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Appearance" } }
+      }
+    },
+    "Erscheinungsbild" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Appearance" } }
+      }
+    },
+    "Das Thema „%@“ gibt das Erscheinungsbild fest vor." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The theme “%@” locks the appearance." } }
+      }
+    },
+    "Automatisch folgt dem System (Hell/Dunkel)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Automatic follows the system (light/dark)." } }
+      }
+    },
+    "Frost-Look" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Frost look" } }
+      }
+    },
+    "Getönt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Tinted" } }
+      }
+    },
+    "Klar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clear" } }
+      }
+    },
+    "Glas-Intensität" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Glass intensity" } }
+      }
+    },
+    "Native Glaseffekte von macOS/iOS 26 — wirkt auf Panels, Dialoge, Glas-Buttons, Lade-Animation und den Fenster-Hintergrund. System-Leisten bleiben nativ. Deaktiviert: klassischer Frost-Look." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Native glass effects of macOS/iOS 26 — applies to panels, dialogs, glass buttons, the loading animation and the window background. System bars stay native. Disabled: classic frost look." } }
+      }
+    },
+    "Thema" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Theme" } }
+      }
+    },
+    "Wechselt die komplette Farbpalette (Hintergrund, Karten, Akzent, Statusfarben). Eigene Akzentfarbe nur im Thema „Slurmy“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Switches the complete color palette (background, cards, accent, status colors). Custom accent color only in the “Slurmy” theme." } }
+      }
+    },
+    "Farbthema" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Color theme" } }
+      }
+    },
+    "Färbt Buttons, Akzente und die Fokus-Markierung. Status­farben (running/pending/fehlgeschlagen) bleiben unverändert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Colors buttons, accents and the focus marker. Status colors (running/pending/failed) stay unchanged." } }
+      }
+    },
+    "Jobs-Liste" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Job list" } }
+      }
+    },
+    "Laufende Jobs immer oben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Running jobs always on top" } }
+      }
+    },
+    "Sortiert laufende Jobs (running) unabhängig von der Spaltensortierung an den Anfang der Liste." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sorts running jobs to the top of the list regardless of the column sorting." } }
+      }
+    },
+    "Anpassbares Grid statt Split-Ansicht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Customizable grid instead of split view" } }
+      }
+    },
+    "Im Dashboard lässt sich jedes Panel frei verschieben und in der Größe ändern (Stift-Symbol oben rechts im Jobs-Tab)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "On the dashboard every panel can be moved and resized freely (pencil icon at the top right of the Jobs tab)." } }
+      }
+    },
+    "Fertige Layouts" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preset layouts" } }
+      }
+    },
+    "Aktiv: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Active: %@" } }
+      }
+    },
+    "Zurücksetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset" } }
+      }
+    },
+    "Textgröße" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Text size" } }
+      }
+    },
+    "Auch per ⌘+ / ⌘- / ⌘0 steuerbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Also adjustable via ⌘+ / ⌘- / ⌘0." } }
+      }
+    },
+    "Benutzer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "User" } }
+      }
+    },
+    "SSH-Schlüssel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "SSH key" } }
+      }
+    },
+    "Keine gespeicherten Zugangsdaten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No saved credentials." } }
+      }
+    },
+    "SSH-Test" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "SSH test" } }
+      }
+    },
+    "Führt echo + hostname + squeue --version auf dem Cluster aus." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Runs echo + hostname + squeue --version on the cluster." } }
+      }
+    },
+    "✗ Keine Verbindung." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "✗ Not connected." } }
+      }
+    },
+    "Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Account" } }
+      }
+    },
+    "Verbindung trennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Disconnect" } }
+      }
+    },
+    "Zugangsdaten löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete credentials" } }
+      }
+    },
+    "Sprache" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Language" } }
+      }
+    },
+    "Neustart erforderlich, damit die Sprache wirksam wird." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Restart required for the language change to take effect." } }
+      }
+    },
+    "Sprache der Oberfläche. Standard: Deutsch." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Interface language. Default: German." } }
+      }
+    },
+    "Jetzt beenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Quit now" } }
+      }
+    },
+    "Eigene Farben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom colors" } }
+      }
+    },
+    "Alle zurücksetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset all" } }
+      }
+    },
+    "Überschreibt Akzent und Statusfarben für das aktive Thema. „Zurücksetzen“ stellt die Themenfarbe wieder her. Hell und Dunkel sind getrennt einstellbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Overrides accent and status colors for the active theme. “Reset” restores the theme color. Light and dark can be set separately." } }
+      }
+    },
+    "Auf Themenfarbe zurücksetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset to theme color" } }
+      }
+    },
+    "Beenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Terminate" } }
+      }
+    },
+    "QoS ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Change QoS" } }
+      }
+    },
+    "Partition ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Change partition" } }
+      }
+    },
+    "Zurückhalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Hold" } }
+      }
+    },
+    "Freigeben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Release" } }
+      }
+    },
+    "Neu einreihen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Requeue" } }
+      }
+    },
+    "beenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "terminate" } }
+      }
+    },
+    "zurückhalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "hold" } }
+      }
+    },
+    "freigeben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "release" } }
+      }
+    },
+    "neu einreihen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "requeue" } }
+      }
+    },
+    "%@ für %lld Job%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ for %2$lld job%3$@" } }
+      }
+    },
+    "`scontrol update` wird je Job einzeln ausgeführt. Nicht zulässige Jobs werden übersprungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "`scontrol update` is executed once per job. Ineligible jobs are skipped." } }
+      }
+    },
+    "Neuer Wert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New value" } }
+      }
+    },
+    "Wählen…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose…" } }
+      }
+    },
+    "Schließen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Close" } }
+      }
+    },
+    "Fertig" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Done" } }
+      }
+    },
+    "Anwenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Apply" } }
+      }
+    },
+    "Öffnet Terminal.app" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens Terminal.app" } }
+      }
+    },
+    "Die App führt selbst kein TTY. Der unten generierte `srun --pty` läuft in einer Terminal-Sitzung über SSH." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The app itself runs no TTY. The `srun --pty` generated below runs in a Terminal session over SSH." } }
+      }
+    },
+    "Optionen konnten nicht geladen werden – Werte manuell prüfen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Options could not be loaded – check values manually." } }
+      }
+    },
+    "Lade Optionen…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading options…" } }
+      }
+    },
+    "Vorschau" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preview" } }
+      }
+    },
+    "In Terminal öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open in Terminal" } }
+      }
+    },
+    "Job einreichen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Submit job" } }
+      }
+    },
+    "Pfad zu einem Batch-Skript, das bereits auf kiz0 liegt. Es wird kein Skript hochgeladen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Path to a batch script that already exists on kiz0. No script is uploaded." } }
+      }
+    },
+    "Remote-Pfad" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Remote path" } }
+      }
+    },
+    "Einreichen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Submit" } }
+      }
+    },
+    "Keine Lesezeichen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No bookmarks" } }
+      }
+    },
+    "Markiere Jobs mit dem Lesezeichen – Slurmy hebt sie hier für dich auf." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Mark jobs with the bookmark – Slurmy keeps them here for you." } }
+      }
+    },
+    "GPU-Stunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU hours" } }
+      }
+    },
+    "Suche User" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search user" } }
+      }
+    },
+    "Zeitraum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Period" } }
+      }
+    },
+    "Von" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "From" } }
+      }
+    },
+    "Bis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "To" } }
+      }
+    },
+    "Erneut versuchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try again" } }
+      }
+    },
+    "Lade GPU-Hours…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading GPU hours…" } }
+      }
+    },
+    "Keine Daten für diesen Zeitraum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No data for this period" } }
+      }
+    },
+    "Kein User passend zu „%@\"" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No user matching “%@”" } }
+      }
+    },
+    "%lld Nutzer · %@h gesamt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$lld users · %2$@h total" } }
+      }
+    },
+    "Du: #%lld · %@h" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "You: #%1$lld · %2$@h" } }
+      }
+    },
+    "30 Tage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "30 days" } }
+      }
+    },
+    "90 Tage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "90 days" } }
+      }
+    },
+    "12 Monate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "12 months" } }
+      }
+    },
+    "Dieses Jahr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This year" } }
+      }
+    },
+    "Letztes Jahr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last year" } }
+      }
+    },
+    "Benutzerdefiniert…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom…" } }
+      }
+    },
+    "Knoten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Nodes" } }
+      }
+    },
+    "mit GPU" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "with GPU" } }
+      }
+    },
+    "Nur GPU-Knoten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU nodes only" } }
+      }
+    },
+    "Suche Knoten / Partition" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search node / partition" } }
+      }
+    },
+    "Lade Knoten…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading nodes…" } }
+      }
+    },
+    "Keine Knoten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No nodes" } }
+      }
+    },
+    "Kein Knoten passend zu „%@\"" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No node matching “%@”" } }
+      }
+    },
+    "%@ frei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ free" } }
+      }
+    },
+    "Lade Partition-Details…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading partition details…" } }
+      }
+    },
+    "Partition-Details konnten nicht geladen werden — Verbindung prüfen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Partition details could not be loaded — check connection." } }
+      }
+    },
+    "GPU-Details ein-/ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show/hide GPU details" } }
+      }
+    },
+    "/ %lld GPUs belegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "/ %lld GPUs allocated" } }
+      }
+    },
+    "meine" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "mine" } }
+      }
+    },
+    "preemptierbar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "preemptible" } }
+      }
+    },
+    "belegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "allocated" } }
+      }
+    },
+    "frei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "free" } }
+      }
+    },
+    "%@ · %@ frei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ · %2$@ free" } }
+      }
+    },
+    "Lade scontrol show node…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading scontrol show node…" } }
+      }
+    },
+    "Alle Felder (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "All fields (%lld)" } }
+      }
+    },
+    "Keine Details verfügbar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No details available" } }
+      }
+    },
+    "%lld belegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld allocated" } }
+      }
+    },
+    "%lld frei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld free" } }
+      }
+    },
+    "Keine GPUs auf diesem Knoten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No GPUs on this node" } }
+      }
+    },
+    "Inspector öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open inspector" } }
+      }
+    },
+    "GPU-Auslastung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU utilization" } }
+      }
+    },
+    "GPU-Belegung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU allocation" } }
+      }
+    },
+    "Partition-Details anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show partition details" } }
+      }
+    },
+    "Partition %@: %lld von %lld GPUs belegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Partition %1$@: %2$lld of %3$lld GPUs allocated" } }
+      }
+    },
+    "Öffnet Partition-Details" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens partition details" } }
+      }
+    },
+    "🔒 = garantiert · ⏏ = preemptierbar (verdrängbar) · ◌ = frei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "🔒 = guaranteed · ⏏ = preemptible (can be evicted) · ◌ = free" } }
+      }
+    },
+    "keine Daten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "no data" } }
+      }
+    },
+    "%.0f%% belegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%.0f%% used" } }
+      }
+    },
+    "GPU-Stunden aktualisieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Refresh GPU hours" } }
+      }
+    },
+    "Alle Nutzer + Zeitraum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "All users + period" } }
+      }
+    },
+    "Öffnet alle Nutzer und die Zeitraum-Auswahl" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens all users and the period picker" } }
+      }
+    },
+    "garantiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "guaranteed" } }
+      }
+    },
+    "QoS auf %@ gesetzt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "QoS set to %@." } }
+      }
+    },
+    "Partition auf %@ gesetzt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Partition set to %@." } }
+      }
+    },
+    "[Kein %@-Pfad in scontrol show job]" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "[No %@ path in scontrol show job]" } }
+      }
+    },
+    "[%@ ist (noch) leer]\n%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "[%1$@ is empty (so far)]\n%2$@" } }
+      }
+    },
+    "[Konnte %@ nicht lesen: %@]\n%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "[Could not read %1$@: %2$@]\n%3$@" } }
+      }
+    },
+    "[%@ ist (noch) leer]" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "[%@ is empty (so far)]" } }
+      }
+    },
+    "Job abbrechen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel job?" } }
+      }
+    },
+    "Bestätigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Confirm" } }
+      }
+    },
+    "Job %@ wird mit scancel beendet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Job %@ will be terminated with scancel." } }
+      }
+    },
+    "Job-ID kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy job ID" } }
+      }
+    },
+    "Name kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy name" } }
+      }
+    },
+    "Bookmark gespeichert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bookmark saved." } }
+      }
+    },
+    "Job als Bookmark speichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Save job as a bookmark" } }
+      }
+    },
+    "Klicken zum Ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Click to change" } }
+      }
+    },
+    "Laufzeit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Runtime" } }
+      }
+    },
+    "Speicher" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Memory" } }
+      }
+    },
+    "Grund" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reason" } }
+      }
+    },
+    "lade…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "loading…" } }
+      }
+    },
+    "Batch-Skript" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Batch script" } }
+      }
+    },
+    "Bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Edit" } }
+      }
+    },
+    "Öffnet das Skript mit $EDITOR (oder vim) in Terminal.app" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens the script with $EDITOR (or vim) in Terminal.app" } }
+      }
+    },
+    "Log vergrössert öffnen (Leertaste)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open enlarged log (Space)" } }
+      }
+    },
+    "%@-Log vergrössern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enlarge %@ log" } }
+      }
+    },
+    "letzte 200 Zeilen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "last 200 lines" } }
+      }
+    },
+    "scancel gesendet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "scancel sent" } }
+      }
+    },
+    "scancel gesendet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "scancel sent." } }
+      }
+    },
+    "Follow-Mode: an" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Follow mode: on" } }
+      }
+    },
+    "Follow-Mode: aus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Follow mode: off" } }
+      }
+    },
+    "Log kopiert (%lld Zeichen)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Log copied (%lld characters)." } }
+      }
+    },
+    "Kein Log-Inhalt vorhanden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No log content available." } }
+      }
+    },
+    "stderr/stdout umschalten (w)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Toggle stderr/stdout (w)" } }
+      }
+    },
+    "Log-Follow-Mode (5s auto-refresh)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Log follow mode (5s auto-refresh)" } }
+      }
+    },
+    "Log kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy log" } }
+      }
+    },
+    "Schliessen (Esc / Leertaste)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Close (Esc / Space)" } }
+      }
+    },
+    "Kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy" } }
+      }
+    },
+    "Suche Job, User, Partition, Status" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search job, user, partition, status" } }
+      }
+    },
+    "Job %@ beenden?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Terminate job %@?" } }
+      }
+    },
+    "%lld Jobs beenden?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Terminate %lld jobs?" } }
+      }
+    },
+    "Job beenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Terminate job" } }
+      }
+    },
+    "Behalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Keep" } }
+      }
+    },
+    "Batch-Ergebnis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Batch result" } }
+      }
+    },
+    "Auswählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select" } }
+      }
+    },
+    "%lld ausgewählt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld selected" } }
+      }
+    },
+    "Grid-Dashboard einschalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable grid dashboard" } }
+      }
+    },
+    "Grid-Dashboard ausschalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Disable grid dashboard" } }
+      }
+    },
+    "Layout bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Edit layout" } }
+      }
+    },
+    "Layout fertig bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Finish editing layout" } }
+      }
+    },
+    "Knoten-Übersicht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Node overview" } }
+      }
+    },
+    "Aktualisieren (r)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Refresh (r)" } }
+      }
+    },
+    "Interaktive Session (i — toggle)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Interactive session (i — toggle)" } }
+      }
+    },
+    "Knoten-Übersicht (G — toggle)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Node overview (G — toggle)" } }
+      }
+    },
+    "Tastatur-Shortcuts (h — toggle)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Keyboard shortcuts (h — toggle)" } }
+      }
+    },
+    "Layout bearbeiten (verschieben/skalieren)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Edit layout (move/resize)" } }
+      }
+    },
+    "Inspector schliessen (⌘⌥0)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Close inspector (⌘⌥0)" } }
+      }
+    },
+    "Inspector öffnen (⌘⌥0)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open inspector (⌘⌥0)" } }
+      }
+    },
+    "Eigene Jobs ↔ alle Nutzer (u)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "My jobs ↔ all users (u)" } }
+      }
+    },
+    "Lesezeichen (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bookmarks (%lld)" } }
+      }
+    },
+    "Aktionen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Actions" } }
+      }
+    },
+    "Entmarken" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unmark" } }
+      }
+    },
+    "Markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Mark" } }
+      }
+    },
+    "Aufsteigend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Ascending" } }
+      }
+    },
+    "Absteigend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Descending" } }
+      }
+    },
+    "Alle Nutzer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "All users" } }
+      }
+    },
+    "Keine Jobs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No jobs" } }
+      }
+    },
+    "Passe Filter oder Suche an." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Adjust filters or search." } }
+      }
+    },
+    "laufend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "running" } }
+      }
+    },
+    "wartend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "pending" } }
+      }
+    },
+    "%lld markiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld marked" } }
+      }
+    },
+    "nur laufende" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "running only" } }
+      }
+    },
+    "%lld sichtbar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld visible" } }
+      }
+    },
+    "Node / Grund" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Node / Reason" } }
+      }
+    },
+    "Node kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy node" } }
+      }
+    },
+    "User kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy user" } }
+      }
+    },
+    "Zeile kopieren (Tab-getrennt)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy row (tab-separated)" } }
+      }
+    },
+    "Alles ruhig im Cluster." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "All quiet in the cluster." } }
+      }
+    },
+    "Nichts passt zu deiner Suche." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Nothing matches your search." } }
+      }
+    },
+    "Job auswählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select job" } }
+      }
+    },
+    "Wähle links einen Job – Slurmy zeigt dir Details, Logs und Live-GPU-Stats." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select a job on the left – Slurmy shows you details, logs and live GPU stats." } }
+      }
+    },
+    "%lld Jobs ausgewählt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld jobs selected" } }
+      }
+    },
+    "%lld eigene" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld own" } }
+      }
+    },
+    "Widget ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Hide widget" } }
+      }
+    },
+    "Cluster-Info" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cluster info" } }
+      }
+    },
+    "Speicher-Quota" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Disk quota" } }
+      }
+    },
+    "Klassisch" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Classic" } }
+      }
+    },
+    "Zwei Spalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Two columns" } }
+      }
+    },
+    "Fokus Jobs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Focus jobs" } }
+      }
+    },
+    "Tabelle + Detail links, Cluster-Karten rechts (wie slurm-tui)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Table + detail on the left, cluster cards on the right (like slurm-tui)" } }
+      }
+    },
+    "Tabelle und Detail nebeneinander, volle Höhe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Table and detail side by side, full height" } }
+      }
+    },
+    "Tabelle über Detail, je volle Breite" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Table above detail, each full width" } }
+      }
+    },
+    "GPU-/Quota-/Stunden-Karten groß, Jobs darunter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU/quota/hours cards large, jobs below" } }
+      }
+    },
+    "Eigenes" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom" } }
+      }
+    },
+    "Keine zulässigen Jobs für %@." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No eligible jobs for %@." } }
+      }
+    },
+    "scancel fehlgeschlagen: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "scancel failed: %@" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

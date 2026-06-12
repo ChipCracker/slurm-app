@@ -6,30 +6,73 @@ import SwiftUI
 @MainActor
 final class DashboardStore: ObservableObject {
     @Published private(set) var layout: DashboardLayout
-    /// Name des aktiven Presets oder „Eigenes" nach manueller Änderung.
-    @Published private(set) var presetName: String
+    /// Sprachneutrale Kennung des aktiven Presets (`DashboardPreset.rawValue`)
+    /// oder `customID` nach manueller Änderung — wird so persistiert, damit
+    /// ein Sprachwechsel den Vergleich/Anzeigenamen nicht bricht.
+    @Published private(set) var presetID: String
 
-    static let customName = "Eigenes"
+    static let customID = "custom"
     private static let layoutKey = "jobsDashboardLayout"
     private static let presetKey = "jobsDashboardPreset"
+
+    /// Lokalisierter Anzeigename des aktiven Presets.
+    var presetName: String {
+        DashboardPreset(rawValue: presetID)?.label ?? String(localized: "Eigenes")
+    }
+
+    func isActive(_ preset: DashboardPreset) -> Bool { presetID == preset.rawValue }
 
     init() {
         let defaults = UserDefaults.standard
         if let data = defaults.data(forKey: Self.layoutKey),
            let decoded = try? JSONDecoder().decode(DashboardLayout.self, from: data),
            !decoded.placements.isEmpty {
-            layout = decoded
+            layout = Self.mergingClusterColumn(decoded)
         } else {
             layout = DashboardPreset.classic.layout
         }
-        presetName = defaults.string(forKey: Self.presetKey) ?? DashboardPreset.classic.label
+        let stored = defaults.string(forKey: Self.presetKey) ?? DashboardPreset.classic.rawValue
+        // Migration: Früher wurde der deutsche Anzeigename persistiert.
+        let legacy = ["Klassisch": "classic", "Zwei Spalten": "twoColumn",
+                      "Fokus Jobs": "focusJobs", "Monitoring": "monitoring",
+                      "Eigenes": Self.customID]
+        if DashboardPreset(rawValue: stored) != nil || stored == Self.customID {
+            presetID = stored
+        } else {
+            presetID = legacy[stored] ?? Self.customID
+        }
+    }
+
+    /// Migration: Die frühere Dreier-Spalte (GPU-Belegung / Quotas / Stunden,
+    /// gestapelt mit gleicher x-Position und Breite) wird zum kombinierten
+    /// `.cluster`-Widget zusammengelegt — die Platzlogik (Belegung natürlich
+    /// hoch, Rest geteilt) lebt jetzt IM Widget. Horizontale Anordnungen
+    /// (Monitoring-Preset) bleiben unangetastet.
+    private static func mergingClusterColumn(_ layout: DashboardLayout) -> DashboardLayout {
+        guard layout.placement(for: .cluster) == nil else { return layout }
+        let parts: [DashboardWidget] = [.gpuAllocation, .diskQuotas, .gpuHours]
+        let found = layout.placements.filter { parts.contains($0.widget) }
+        guard found.count >= 2,
+              let first = found.first,
+              found.allSatisfy({ $0.frame.x == first.frame.x && $0.frame.w == first.frame.w })
+        else { return layout }
+
+        var result = layout
+        result.placements.removeAll { parts.contains($0.widget) }
+        let minY = found.map(\.frame.y).min() ?? 0
+        let maxY = found.map { $0.frame.y + $0.frame.h }.max() ?? 3
+        result.placements.append(.init(
+            widget: .cluster,
+            frame: .init(x: first.frame.x, y: minY, w: first.frame.w, h: maxY - minY)
+        ))
+        return result
     }
 
     // MARK: – Presets
 
     func apply(_ preset: DashboardPreset) {
         layout = preset.layout
-        presetName = preset.label
+        presetID = preset.rawValue
         persist()
     }
 
@@ -87,7 +130,7 @@ final class DashboardStore: ObservableObject {
     // MARK: – Intern
 
     private func markCustom() {
-        if presetName != Self.customName { presetName = Self.customName }
+        if presetID != Self.customID { presetID = Self.customID }
     }
 
     /// Erste rasterfreie Position (zeilenweise von oben), die `w×h` aufnimmt.
@@ -111,6 +154,6 @@ final class DashboardStore: ObservableObject {
         if let data = try? JSONEncoder().encode(layout) {
             UserDefaults.standard.set(data, forKey: Self.layoutKey)
         }
-        UserDefaults.standard.set(presetName, forKey: Self.presetKey)
+        UserDefaults.standard.set(presetID, forKey: Self.presetKey)
     }
 }

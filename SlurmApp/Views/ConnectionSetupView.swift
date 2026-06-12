@@ -4,6 +4,12 @@ import UniformTypeIdentifiers
 struct ConnectionSetupView: View {
     @EnvironmentObject var appState: AppState
     @State private var creds: Credentials = .kiz0Default
+    /// Formular-Entwurf, der den Unmount während `.connecting` überlebt:
+    /// RootView tauscht diese View gegen den Lade-Screen aus, was alle
+    /// @State-Felder zerstört. Schlägt der Connect fehl, stellt onAppear den
+    /// Entwurf (inkl. getipptem Passwort / eingefügtem PEM-Key) wieder her,
+    /// statt auf die Defaults zurückzufallen. Nur im Speicher, nie persistiert.
+    @MainActor private static var draftCreds: Credentials?
     @State private var showKeyImporter = false
     @State private var testResult: String?
     @State private var testing: Bool = false
@@ -35,24 +41,45 @@ struct ConnectionSetupView: View {
                 }
             }
             .navigationTitle("Verbindung")
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
         }
         .onAppear {
-            if let stored = appState.credentials { creds = stored }
+            if case .failed = appState.connectionStatus, let draft = Self.draftCreds {
+                // Fehlgeschlagener Verbindungsversuch: die zuletzt getippten
+                // Werte wiederherstellen (gespeicherte Credentials gibt es beim
+                // Erstlauf noch nicht — die werden erst nach Erfolg gesichert).
+                creds = draft
+            } else if let stored = appState.credentials {
+                creds = stored
+            }
             availableKeys = SSHKeyLoader.discoverDefaultKeys()
         }
     }
 
+    /// Freundlicher Willkommens-Header mit dem Slurmy-Maskottchen — der erste
+    /// Marken-Moment der App (Glow-Schatten wie in `SlurmyEmptyState`,
+    /// markenfest Blue Bright).
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Slurm Cluster")
-                .font(.title2.bold())
-                .foregroundColor(Theme.textPrimary)
-            Text("SSH-Verbindung zum kiz0-Login-Node")
-                .font(.subheadline)
-                .foregroundColor(Theme.textSecondary)
+        VStack(spacing: 14) {
+            Image("SlurmyMascot")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 140)
+                .shadow(color: Color(red: 0.16, green: 0.45, blue: 0.92).opacity(0.35),
+                        radius: 24, y: 6)
+                .accessibilityHidden(true)
+            VStack(spacing: 6) {
+                Text("Willkommen bei Slurmy")
+                    .font(.title2.bold())
+                    .foregroundColor(Theme.textPrimary)
+                Text("SSH-Verbindung zum kiz0-Login-Node")
+                    .font(.subheadline)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
     }
 
     private var formCard: some View {
@@ -114,7 +141,7 @@ struct ConnectionSetupView: View {
                     isPasting = false
                 }
             case .failure(let err):
-                testResult = "Datei konnte nicht gelesen werden: \(err.localizedDescription)"
+                testResult = String(localized: "Datei konnte nicht gelesen werden: \(err.localizedDescription)")
             }
         }
     }
@@ -131,7 +158,7 @@ struct ConnectionSetupView: View {
     private func loadedKeyCard(pem: String) -> some View {
         let keyType = detectKeyType(pem)
         let bytes = pem.utf8.count
-        let source = selectedKeyName ?? "Schlüssel hinterlegt"
+        let source = selectedKeyName ?? String(localized: "Schlüssel hinterlegt")
         return HStack(spacing: 10) {
             Image(systemName: "lock.shield.fill")
                 .foregroundColor(Theme.success)
@@ -240,7 +267,7 @@ struct ConnectionSetupView: View {
         if trimmed.hasPrefix("-----BEGIN RSA PRIVATE KEY-----")     { return "RSA (PKCS#1)" }
         if trimmed.hasPrefix("-----BEGIN EC PRIVATE KEY-----")      { return "EC (PEM)" }
         if trimmed.hasPrefix("-----BEGIN PRIVATE KEY-----")         { return "PKCS#8" }
-        return "Unbekannt"
+        return String(localized: "Unbekannt")
     }
 
     private var keyImportButton: some View {
@@ -284,7 +311,7 @@ struct ConnectionSetupView: View {
             selectedKeyName = key.name
             testResult = nil
         } catch {
-            testResult = "Konnte \(key.name) nicht lesen: \(error.localizedDescription)"
+            testResult = String(localized: "Konnte \(key.name) nicht lesen: \(error.localizedDescription)")
         }
     }
 
@@ -303,7 +330,9 @@ struct ConnectionSetupView: View {
         .frame(width: 80)
     }
 
-    private func field(label: String, text: Binding<String>, prompt: String) -> some View {
+    // LocalizedStringKey statt String: Die Literal-Labels lokalisieren so
+    // automatisch über den Katalog; die Prompts (Beispielwerte) bleiben roh.
+    private func field(label: LocalizedStringKey, text: Binding<String>, prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption)
@@ -317,7 +346,7 @@ struct ConnectionSetupView: View {
         }
     }
 
-    private func secureField(label: String, text: Binding<String>) -> some View {
+    private func secureField(label: LocalizedStringKey, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption)
@@ -345,6 +374,7 @@ struct ConnectionSetupView: View {
             .disabled(testing || !canSubmit)
 
             Button {
+                Self.draftCreds = creds
                 Task { await appState.connect(using: creds) }
             } label: {
                 Label("Verbinden", systemImage: "bolt.fill")
@@ -371,14 +401,14 @@ struct ConnectionSetupView: View {
 
     private func testConnection() async {
         testing = true; defer { testing = false }
-        testResult = "Verbinde mit \(creds.host):\(creds.port)…"
+        testResult = String(localized: "Verbinde mit \(creds.host):\(creds.port)…")
         do {
             let client = try await SSHClient.connect(credentials: creds)
             let info = try await client.ping()
             await client.close()
-            testResult = "✓ Verbindung ok\n\(info.trimmingCharacters(in: .whitespacesAndNewlines))"
+            testResult = String(localized: "✓ Verbindung ok\n\(info.trimmingCharacters(in: .whitespacesAndNewlines))")
         } catch {
-            testResult = "✗ Fehler: \(error.localizedDescription)"
+            testResult = String(localized: "✗ Fehler: \(error.localizedDescription)")
         }
     }
 }

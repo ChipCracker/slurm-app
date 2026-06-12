@@ -6,6 +6,20 @@ import SwiftUI
 struct GpuHoursSheetView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.glassModalDismiss) private var dismiss
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    /// Kompakte iPhone-Breite → Menü-Picker + eigene Zeilen statt der einen
+    /// HStack-Reihe (6-Segment-Picker + DatePickers + Suche), die ~345pt
+    /// Sheet-Breite weit überläuft.
+    private var isCompact: Bool {
+        #if os(iOS)
+        return horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
 
     @State private var rangePreset: RangePreset = .thisYear
     @State private var customStart: Date = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
@@ -14,6 +28,15 @@ struct GpuHoursSheetView: View {
     @State private var loading: Bool = false
     @State private var error: String?
     @State private var search: String = ""
+    /// Bumped by the manual refresh button and "Anwenden" to force a reload;
+    /// part of the `.task(id:)` key so a new reload cancels the previous one
+    /// (no overlapping unstructured Tasks, no stale-result race).
+    @State private var reloadToken: Int = 0
+    @State private var forceNextReload: Bool = false
+
+    /// Re-runs `reload` whenever the period or the force-token changes. Custom
+    /// dates only take effect via "Anwenden" (which bumps the token).
+    private var reloadKey: String { "\(rangePreset.rawValue)#\(reloadToken)" }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,8 +47,14 @@ struct GpuHoursSheetView: View {
             content
         }
         .background(rangeShortcuts)
-        .task { await reload() }
-        .onChange(of: rangePreset) { _, _ in Task { await reload() } }
+        // `.task(id:)` cancels the in-flight reload when the key changes, so
+        // mashing the period picker can't leave overlapping reloads racing.
+        .task(id: reloadKey) { await reload() }
+    }
+
+    private func requestReload(force: Bool = true) {
+        forceNextReload = force
+        reloadToken += 1
     }
 
     /// `⌥←` and `⌥→` cycle through the segmented range picker.
@@ -57,7 +86,7 @@ struct GpuHoursSheetView: View {
                     .foregroundColor(Theme.success)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("GPU Hours")
+                Text("GPU-Stunden")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
@@ -66,32 +95,41 @@ struct GpuHoursSheetView: View {
                     .foregroundStyle(.primary)
             }
             Spacer()
-            Button(action: { Task { await reload() } }) {
-                Image(systemName: loading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .disabled(loading)
-            .help("Aktualisieren")
+            SlurmyGlassButtonGroup {
+                Button(action: { requestReload() }) {
+                    Image(systemName: loading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .disabled(loading)
+                .help("Aktualisieren")
 
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .keyboardShortcut(.cancelAction)
+                .help("Schliessen (Esc)")
             }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .keyboardShortcut(.cancelAction)
-            .help("Schliessen (Esc)")
         }
         .padding(.horizontal, 24).padding(.vertical, 18)
     }
 
     // MARK: – Period controls
 
+    @ViewBuilder
     private var controls: some View {
+        if isCompact {
+            compactControls
+        } else {
+            regularControls
+        }
+    }
+
+    private var regularControls: some View {
         HStack(spacing: 12) {
             Picker("", selection: $rangePreset) {
                 ForEach(RangePreset.allCases) { p in
@@ -108,8 +146,8 @@ struct GpuHoursSheetView: View {
                 Text("–").foregroundStyle(.secondary)
                 DatePicker("", selection: $customEnd, displayedComponents: .date)
                     .labelsHidden()
-                Button("Anwenden") { Task { await reload() } }
-                    .buttonStyle(.borderedProminent)
+                Button("Anwenden") { requestReload() }
+                    .slurmyGlassButton(prominent: true)
             }
             Spacer()
             TextField("Suche User", text: $search)
@@ -117,6 +155,38 @@ struct GpuHoursSheetView: View {
                 .frame(maxWidth: 200)
         }
         .padding(.horizontal, 24).padding(.vertical, 12)
+    }
+
+    /// Kompakte Variante: Zeitraum als Menü-Picker, eigene Zeilen für die
+    /// Custom-Daten und die Suche — nichts läuft aus der Sheet-Breite.
+    private var compactControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Zeitraum")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("Zeitraum", selection: $rangePreset) {
+                    ForEach(RangePreset.allCases) { p in
+                        Text(p.label).tag(p)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+            if rangePreset == .custom {
+                DatePicker("Von", selection: $customStart, displayedComponents: .date)
+                    .font(.callout)
+                DatePicker("Bis", selection: $customEnd, displayedComponents: .date)
+                    .font(.callout)
+                Button("Anwenden") { requestReload() }
+                    .slurmyGlassButton(prominent: true)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            TextField("Suche User", text: $search)
+                .textFieldStyle(.roundedBorder)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
     }
 
     // MARK: – Content
@@ -133,14 +203,13 @@ struct GpuHoursSheetView: View {
                     .foregroundColor(Theme.danger)
                     .multilineTextAlignment(.center)
                     .textSelection(.enabled)
-                Button("Erneut versuchen") { Task { await reload() } }
+                Button("Erneut versuchen") { requestReload() }
+                    .slurmyGlassButton()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(24)
         } else if loading && entries.isEmpty {
-            ProgressView("Lade GPU-Hours…")
-                .tint(Theme.accent)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SlurmyLoadingState(caption: "Lade GPU-Hours…")
         } else if filtered.isEmpty {
             VStack(spacing: 8) {
                 Image(systemName: "tray").font(.largeTitle).foregroundStyle(.secondary)
@@ -193,8 +262,10 @@ struct GpuHoursSheetView: View {
                 .frame(width: 160, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
+                    // Opake Spur statt Material — winziges Content-Element,
+                    // kein Glas (und kein Glas-auf-Glas im Modal).
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(.thinMaterial)
+                        .fill(Theme.surfaceElevated)
                     RoundedRectangle(cornerRadius: 3)
                         .fill(isMe ? Theme.accent : Theme.success)
                         .frame(width: max(4, CGFloat(min(1, ratio)) * geo.size.width))
@@ -256,17 +327,36 @@ struct GpuHoursSheetView: View {
 
     private func reload() async {
         guard let slurm = appState.slurm else {
-            error = "Keine SSH-Verbindung."
+            error = String(localized: "Keine SSH-Verbindung.")
             return
         }
+        let (start, end) = currentRange
+        let key = rangePreset == .custom
+            ? "custom#\(Int(start.timeIntervalSince1970))#\(Int(end.timeIntervalSince1970))"
+            : rangePreset.rawValue
+        let force = forceNextReload
+        forceNextReload = false
+
+        // Serve a recent result (≤30 min) instead of re-running the heavy
+        // year-long sreport on every open, unless the user forced a refresh.
+        if !force, let cached = appState.cachedGpuHours(forKey: key, maxAge: 1800) {
+            entries = cached
+            error = nil
+            return
+        }
+
         loading = true
         defer { loading = false }
-        let (start, end) = currentRange
         do {
             let list = try await slurm.fetchGpuHours(start: start, end: end, topN: 0)
+            // `.task(id:)` cancels us when the period changes — don't let a
+            // late-returning fetch overwrite the newer selection's data.
+            if Task.isCancelled { return }
             self.entries = list
             self.error = nil
+            appState.storeGpuHours(list, forKey: key)
         } catch {
+            if Task.isCancelled { return }
             self.error = error.localizedDescription
             self.entries = []
         }
@@ -276,14 +366,15 @@ struct GpuHoursSheetView: View {
 enum RangePreset: String, CaseIterable, Identifiable {
     case last30Days, last90Days, last12Months, thisYear, lastYear, custom
     var id: String { rawValue }
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .last30Days:   "30 Tage"
-        case .last90Days:   "90 Tage"
-        case .last12Months: "12 Monate"
-        case .thisYear:     "Dieses Jahr"
-        case .lastYear:     "Letztes Jahr"
-        case .custom:       "Custom…"
+        case .last30Days:   String(localized: "30 Tage")
+        case .last90Days:   String(localized: "90 Tage")
+        case .last12Months: String(localized: "12 Monate")
+        case .thisYear:     String(localized: "Dieses Jahr")
+        case .lastYear:     String(localized: "Letztes Jahr")
+        case .custom:       String(localized: "Benutzerdefiniert…")
         }
     }
 }

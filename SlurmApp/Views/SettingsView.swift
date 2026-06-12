@@ -22,9 +22,21 @@ struct SettingsView: View {
         #endif
     }
 
+    /// Sprache der Oberfläche ("de"/"en"). Deutsch ist registrierter Default
+    /// (SlurmApp.init); Englisch wird als persistierter AppleLanguages-Wert
+    /// gesetzt und gewinnt dann dauerhaft. Wirksam erst nach Neustart.
+    @State private var languageCode: String = "de"
+    @State private var languageChanged = false
+
     @AppStorage("appearance") private var appearanceRaw: String = AppAppearance.system.rawValue
     @AppStorage(AppTheme.storageKey) private var accentThemeRaw: String = AppTheme.default.rawValue
+    @AppStorage(AppColorTheme.storageKey) private var colorThemeRaw: String = AppColorTheme.default.rawValue
+    @AppStorage(LiquidGlassSetting.storageKey) private var liquidGlassEnabled: Bool = true
+    @AppStorage(LiquidGlassSetting.intensityKey) private var liquidGlassIntensity: Double = LiquidGlassSetting.defaultIntensity
     @AppStorage("textSizeIndex") private var textSizeIndex: Int = 3
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var activeColorTheme: AppColorTheme { AppColorTheme(rawValue: colorThemeRaw) ?? .default }
 
     private let textSizeNames = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"]
     private let defaultTextSizeIndex = 3
@@ -32,29 +44,17 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.background.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 16) {
-                        brandingHeader
-                        appearanceCard
-                        themeCard
-                        jobsListCard
-                        if dashboardAvailable {
-                            dashboardCard
-                        }
-                        textSizeCard
-                        connectionCard
-                        pingCard
-                        actionsCard
-                        aboutFooter
-                    }
-                    .padding()
-                    .frame(maxWidth: 560)
-                    .frame(maxWidth: .infinity)
-                }
+                SlurmyPaneBackground().ignoresSafeArea()
+                #if os(macOS)
+                // Viewport-Layout: Die Seite scrollt nie — die Karten-Spalten
+                // füllen den sichtbaren Platz, Überlänge scrollt in der Karte.
+                macLayout
+                #else
+                iosLayout
+                #endif
             }
             .navigationTitle("Einstellungen")
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund — System-Bar = Liquid Glass.
         }
         .alert("Zugangsdaten löschen?", isPresented: $showForgetConfirm) {
             Button("Abbrechen", role: .cancel) {}
@@ -66,8 +66,147 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: – Branding header
+    // MARK: – Layout (macOS: Viewport-Raster / iOS: scrollende Seite)
 
+    #if os(macOS)
+    /// macOS füllt den Viewport komplett: drei Karten-Spalten teilen sich
+    /// Breite und Höhe (flexible Frames statt GeometryReader), darunter eine
+    /// kompakte „Über“-Leiste über die volle Breite. Karten mit viel Inhalt
+    /// (Darstellung, Themen-Grid, Eigene Farben, Dashboard) bekommen
+    /// `maxHeight: .infinity` und scrollen INNERHALB ihrer Karte (der
+    /// Kartenkopf bleibt stehen, s. `SettingsSection`); kompakte Karten
+    /// behalten per `fixedSize` ihre natürliche Höhe. Optimiert auf die
+    /// Fenster-Minimalgröße 1100×720 — wird es enger, scrollt die einzelne
+    /// Karte, nie die Seite.
+    private var macLayout: some View {
+        VStack(spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                // Spalte 1 — Darstellung & Verhalten
+                VStack(spacing: 16) {
+                    appearanceCard
+                        .frame(maxHeight: .infinity)
+                    languageCard
+                        .fixedSize(horizontal: false, vertical: true)
+                    jobsListCard
+                        .fixedSize(horizontal: false, vertical: true)
+                    textSizeCard
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Spalte 2 — Themes & Farben
+                VStack(spacing: 16) {
+                    colorThemeCard
+                        .frame(maxHeight: .infinity)
+                    if activeColorTheme.allowsAccentOverride {
+                        themeCard
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    // „Eigene Farben“ bringt eigenes Karten-Chrome mit
+                    // (SettingsCustomColors.swift) — hier nur der scrollende
+                    // Slot, damit die Spalte nie über den Viewport wächst.
+                    ScrollView {
+                        CustomColorsCard()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Spalte 3 — Dashboard & Verbindung
+                VStack(spacing: 16) {
+                    dashboardCard // auf macOS immer verfügbar
+                        .frame(maxHeight: .infinity)
+                    connectionCard
+                        .fixedSize(horizontal: false, vertical: true)
+                    pingCard
+                        .fixedSize(horizontal: false, vertical: true)
+                    actionsCard
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            aboutBar
+        }
+        .padding(16)
+    }
+
+    /// Branding (Icon, Name, Claim) und die „Über“-Zeilen (Version, Slogan,
+    /// Read-only-Hinweis) als kompakte Glas-Leiste über die volle Breite —
+    /// ersetzt auf macOS den Branding-Header und den Footer der iOS-Seite.
+    private var aboutBar: some View {
+        HStack(spacing: 12) {
+            Image(nsImageOrUIImageNamed: "AppIconPreview")
+                .resizable()
+                .frame(width: 36, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 0.5)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Slurmy \(appVersion) (\(appBuild))")
+                    .font(.caption.monospaced().bold())
+                    .foregroundColor(Theme.textPrimary)
+                Text("Slurm-Client für iPhone, iPad & Mac")
+                    .font(.caption2)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 2) {
+                // Marken-Slogan, bewusst englisch (Brand-Asset).
+                Text("Clusters, simplified. Beautifully.")
+                    .font(.caption.italic())
+                    .foregroundColor(Theme.textSecondary)
+                Text("Read-only by default · mutierende Befehle nur nach Bestätigung")
+                    .font(.caption2)
+                    .foregroundColor(Theme.textSecondary.opacity(0.8))
+            }
+            Image("SlurmyMascot")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 40)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .environment(\.insideGlassPanel, true)
+        .slurmyFrostCard(cornerRadius: 14)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    #else
+    /// iOS: unveränderte scrollende Seite (eine Spalte, System-Scroll).
+    private var iosLayout: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                brandingHeader
+                appearanceCard
+                languageCard
+                colorThemeCard
+                if activeColorTheme.allowsAccentOverride {
+                    themeCard
+                }
+                CustomColorsCard()
+                jobsListCard
+                if dashboardAvailable {
+                    dashboardCard
+                }
+                textSizeCard
+                connectionCard
+                pingCard
+                actionsCard
+                aboutFooter
+            }
+            .padding()
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
+        }
+    }
+    #endif
+
+    // MARK: – Branding header (nur iOS — macOS nutzt die „Über“-Leiste)
+
+    #if os(iOS)
     private var brandingHeader: some View {
         VStack(spacing: 10) {
             Image(nsImageOrUIImageNamed: "AppIconPreview")
@@ -89,11 +228,13 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
     }
+    #endif
 
     // MARK: – Appearance
 
     private var appearanceCard: some View {
-        SettingsSection(title: "Darstellung", systemImage: "paintbrush") {
+        let locked = activeColorTheme.forcedColorScheme != nil
+        return SettingsSection(title: "Darstellung", systemImage: "paintbrush") {
             Picker("Erscheinungsbild", selection: $appearanceRaw) {
                 ForEach(AppAppearance.allCases) { mode in
                     Label(mode.label, systemImage: mode.symbol).tag(mode.rawValue)
@@ -101,9 +242,201 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text("Automatisch folgt dem System (Hell/Dunkel).")
+            .disabled(locked)
+            Text(locked
+                 ? "Das Thema „\(activeColorTheme.label)“ gibt das Erscheinungsbild fest vor."
+                 : "Automatisch folgt dem System (Hell/Dunkel).")
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)
+            // Nur auf OS-Versionen mit Liquid Glass anbieten (macOS 26+/iOS 26)
+            // — auf macOS 14/15 gibt es ohnehin nur den Frost-Fallback, der
+            // Schalter wäre wirkungslos. System-Chrome (Toolbar/Sidebar)
+            // bleibt vom Schalter unberührt; er gilt nur für die app-eigenen
+            // Glas-Flächen (Modals, Loader, Glas-Buttons).
+            if #available(macOS 26.0, iOS 26.0, *) {
+                Divider()
+                Toggle(isOn: $liquidGlassEnabled) {
+                    Text("Liquid Glass")
+                        .foregroundColor(Theme.textPrimary)
+                }
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+                // Live-Vorschau mit denselben Modifiern wie die echten
+                // Glas-Flächen: Der Settings-Screen selbst hat keine — ohne
+                // Vorschau wirkte der Schalter hier folgenlos. Der bunte
+                // Verlauf dahinter macht Refraktion (Glas) vs. Frost sichtbar.
+                ZStack {
+                    LinearGradient(
+                        colors: [Theme.accent.opacity(0.55),
+                                 Theme.purple.opacity(0.45),
+                                 Theme.cyan.opacity(0.55)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    Text(liquidGlassEnabled ? "Liquid Glass" : "Frost-Look")
+                        .font(.callout.bold())
+                        .foregroundColor(Theme.textPrimary)
+                        .padding(.horizontal, 22).padding(.vertical, 10)
+                        .slurmyGlass(cornerRadius: 12, tint: Theme.glassTint)
+                }
+                .frame(height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+                #if os(macOS)
+                // Intensitäts-Slider (Apples „Getönt/Klar", nur stufenlos):
+                // steuert die Theme-Tönung über dem Fenster-Material — der
+                // Settings-Hintergrund reagiert live beim Ziehen.
+                if liquidGlassEnabled {
+                    HStack(spacing: 10) {
+                        Text("Getönt")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                        Slider(value: $liquidGlassIntensity, in: 0...1)
+                            .tint(Theme.accent)
+                            .accessibilityLabel("Glas-Intensität")
+                        Text("Klar")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                }
+                #endif
+                Text("Native Glaseffekte von macOS/iOS 26 — wirkt auf Panels, Dialoge, Glas-Buttons, Lade-Animation und den Fenster-Hintergrund. System-Leisten bleiben nativ. Deaktiviert: klassischer Frost-Look.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            }
+        }
+    }
+
+    // MARK: – Sprache
+
+    /// Deutsch/Englisch-Umschalter. Deutsch = registrierter Default
+    /// (AppleLanguages wird ENTFERNT, der in SlurmApp.init registrierte
+    /// de-Default greift wieder); Englisch = persistierter Override.
+    /// Greift erst nach einem Neustart — SwiftUI lädt den Katalog beim Start.
+    private var languageCard: some View {
+        SettingsSection(title: "Sprache", systemImage: "globe") {
+            Picker("Sprache", selection: $languageCode) {
+                // Sprachnamen bewusst in der jeweiligen Sprache (nicht übersetzen).
+                Text(verbatim: "Deutsch").tag("de")
+                Text(verbatim: "English").tag("en")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if languageChanged {
+                HStack(spacing: 8) {
+                    Label {
+                        Text("Neustart erforderlich, damit die Sprache wirksam wird.")
+                            .font(.caption)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .font(.caption)
+                    .foregroundColor(Theme.warning)
+                    Spacer()
+                    #if os(macOS)
+                    Button("Jetzt beenden") { NSApplication.shared.terminate(nil) }
+                        .font(.caption.bold())
+                        .buttonStyle(.plain)
+                        .foregroundColor(Theme.accent)
+                    #endif
+                }
+            } else {
+                Text("Sprache der Oberfläche. Standard: Deutsch.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            }
+        }
+        .onAppear { languageCode = Self.storedLanguage() }
+        .onChange(of: languageCode) { _, newValue in
+            // onAppear setzt den Initialwert — nur echte Wechsel anwenden.
+            guard newValue != Self.storedLanguage() else { return }
+            applyLanguage(newValue)
+        }
+    }
+
+    /// Aktuell wirksame Sprache: persistierter AppleLanguages-Wert gewinnt,
+    /// sonst Deutsch (registrierter Default). Bewusst über die persistente
+    /// Domain gelesen — `UserDefaults.array(forKey:)` würde auch den
+    /// registrierten Default liefern und Override/Default ununterscheidbar machen.
+    private static func storedLanguage() -> String {
+        let domain = Bundle.main.bundleIdentifier.flatMap {
+            UserDefaults.standard.persistentDomain(forName: $0)
+        }
+        if let langs = domain?["AppleLanguages"] as? [String], let first = langs.first {
+            return first.hasPrefix("en") ? "en" : "de"
+        }
+        return "de"
+    }
+
+    private func applyLanguage(_ code: String) {
+        if code == "de" {
+            // Registrierter de-Default (SlurmApp.init) greift wieder.
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        } else {
+            UserDefaults.standard.set([code], forKey: "AppleLanguages")
+        }
+        languageChanged = true
+    }
+
+    /// Full theme picker — live-preview swatch tiles rendered from each theme's
+    /// own palette (background, card, accent, status dots).
+    private var colorThemeCard: some View {
+        SettingsSection(title: "Thema", systemImage: "swatchpalette") {
+            let columns = [GridItem(.adaptive(minimum: 104), spacing: 12)]
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(AppColorTheme.allCases) { theme in
+                    let selected = theme.rawValue == colorThemeRaw
+                    Button {
+                        // Bewegung reduzieren ⇒ Wechsel ohne Animation.
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) {
+                            colorThemeRaw = theme.rawValue
+                        }
+                    } label: {
+                        themeSwatch(theme, selected: selected)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Text("Wechselt die komplette Farbpalette (Hintergrund, Karten, Akzent, Statusfarben). Eigene Akzentfarbe nur im Thema „Slurmy“.")
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    private func themeSwatch(_ theme: AppColorTheme, selected: Bool) -> some View {
+        let p = theme.palette
+        let accent = theme.allowsAccentOverride ? AppTheme.current.accent : p.accent
+        return VStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(p.background)
+                VStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(p.surface)
+                        .frame(height: 16)
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(accent).frame(width: 22, height: 5).padding(.leading, 5)
+                        }
+                    HStack(spacing: 4) {
+                        Circle().fill(p.success).frame(width: 7, height: 7)
+                        Circle().fill(p.warning).frame(width: 7, height: 7)
+                        Circle().fill(p.danger).frame(width: 7, height: 7)
+                        Circle().fill(p.cyan).frame(width: 7, height: 7)
+                        Spacer()
+                    }
+                }
+                .padding(7)
+            }
+            .frame(height: 56)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(selected ? accent : Theme.border, lineWidth: selected ? 2 : 1)
+            )
+            HStack(spacing: 4) {
+                if selected { Image(systemName: "checkmark.circle.fill").font(.caption2).foregroundColor(Theme.accent) }
+                Text(theme.label)
+                    .font(.caption2.weight(selected ? .bold : .regular))
+                    .foregroundColor(selected ? Theme.textPrimary : Theme.textSecondary)
+            }
         }
     }
 
@@ -151,7 +484,7 @@ struct SettingsView: View {
 
     private var jobsListCard: some View {
         SettingsSection(title: "Jobs-Liste", systemImage: "list.bullet") {
-            Toggle(isOn: $runningJobsFirst.animation()) {
+            Toggle(isOn: $runningJobsFirst.animation(reduceMotion ? nil : .default)) {
                 Text("Laufende Jobs immer oben")
                     .foregroundColor(Theme.textPrimary)
             }
@@ -168,7 +501,7 @@ struct SettingsView: View {
 
     private var dashboardCard: some View {
         SettingsSection(title: "Dashboard (Jobs)", systemImage: "rectangle.3.group") {
-            Toggle(isOn: $dashboardEnabled.animation()) {
+            Toggle(isOn: $dashboardEnabled.animation(reduceMotion ? nil : .default)) {
                 Text("Anpassbares Grid statt Split-Ansicht")
                     .foregroundColor(Theme.textPrimary)
             }
@@ -207,10 +540,11 @@ struct SettingsView: View {
     }
 
     private func presetButton(_ preset: DashboardPreset) -> some View {
-        let selected = dashboard.presetName == preset.label
+        // Sprachneutraler Vergleich — Labels sind lokalisiert.
+        let selected = dashboard.isActive(preset)
         return Button {
             dashboard.apply(preset)
-            withAnimation { dashboardEnabled = true }
+            withMotion { dashboardEnabled = true }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: preset.symbol)
@@ -304,7 +638,9 @@ struct SettingsView: View {
                 LabeledRow(label: "Host", value: c.host)
                 LabeledRow(label: "Benutzer", value: c.username)
                 LabeledRow(label: "Port", value: String(c.port))
-                LabeledRow(label: "Auth", value: c.authMethod == .privateKey ? "SSH-Schlüssel" : "Passwort")
+                LabeledRow(label: "Auth", value: c.authMethod == .privateKey
+                    ? String(localized: "SSH-Schlüssel")
+                    : String(localized: "Passwort"))
             } else {
                 Text("Keine gespeicherten Zugangsdaten.")
                     .font(.caption)
@@ -317,6 +653,7 @@ struct SettingsView: View {
         switch appState.connectionStatus {
         case .connected:    return Theme.success
         case .connecting:   return Theme.warning
+        case .degraded:     return Theme.warning
         case .failed:       return Theme.danger
         case .disconnected: return Theme.textSecondary
         }
@@ -382,10 +719,25 @@ struct SettingsView: View {
         }
     }
 
+    /// "Über Slurmy"-Footer: kleines Maskottchen, App-Name + Version und der
+    /// Marken-Slogan (bewusst englisch, Brand-Asset). Bewusst keine Karte —
+    /// wie der bisherige Footer. Nur iOS — macOS nutzt die „Über“-Leiste.
+    #if os(iOS)
     private var aboutFooter: some View {
-        VStack(spacing: 4) {
-            Text("Version \(appVersion) (\(appBuild))")
+        VStack(spacing: 6) {
+            Image("SlurmyMascot")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 76)
+                .shadow(color: Color(red: 0.16, green: 0.45, blue: 0.92).opacity(0.3),
+                        radius: 16, y: 4)
+                .accessibilityHidden(true)
+                .padding(.bottom, 2)
+            Text("Slurmy \(appVersion) (\(appBuild))")
                 .font(.caption.monospaced())
+                .foregroundColor(Theme.textSecondary)
+            Text("Clusters, simplified. Beautifully.")
+                .font(.caption.italic())
                 .foregroundColor(Theme.textSecondary)
             Text("Read-only by default · mutierende Befehle nur nach Bestätigung")
                 .font(.caption2)
@@ -393,8 +745,9 @@ struct SettingsView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 4)
+        .padding(.top, 8)
     }
+    #endif
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
@@ -405,7 +758,7 @@ struct SettingsView: View {
 
     private func ping() async {
         guard let slurm = appState.slurm else {
-            pingResult = "✗ Keine Verbindung."
+            pingResult = String(localized: "✗ Keine Verbindung.")
             return
         }
         pinging = true; defer { pinging = false }
@@ -422,12 +775,26 @@ struct SettingsView: View {
     SettingsView()
         .environmentObject(AppState())
         .environmentObject(DashboardStore())
+        // macOS: Fenster-Minimalgröße (Viewport-Raster), iOS: schmale Seite.
+        #if os(macOS)
+        .frame(width: 1100, height: 720)
+        #else
         .frame(width: 420, height: 900)
+        #endif
 }
 
-/// Titled card used to group related settings, matching the app's card style.
+/// Titled card used to group related settings. Karten-Chrome ist Liquid
+/// Glass (`.slurmyGlass`, Tönung aus dem Theme) — auf macOS 14/15 bzw. bei
+/// deaktiviertem Glas-Schalter rendert der Helfer automatisch den
+/// Frost-Fallback. `insideGlassPanel` verhindert Glas-auf-Glas bei
+/// verschachtelten Glas-Buttons; System-Controls (Toggle, Slider, Picker)
+/// behalten ihre nativen Styles. Auf macOS scrollt der Inhalt bei Platznot
+/// INNERHALB der Karte (die Kopfzeile bleibt stehen) — die Settings-Seite
+/// selbst scrollt dort nie; auf iOS scrollt wie bisher die ganze Seite.
 private struct SettingsSection<Content: View>: View {
-    let title: String
+    // LocalizedStringKey statt String: Die Literal-Titel lokalisieren so
+    // automatisch über den Katalog.
+    let title: LocalizedStringKey
     let systemImage: String
     @ViewBuilder var content: () -> Content
 
@@ -441,15 +808,33 @@ private struct SettingsSection<Content: View>: View {
                     .font(.headline)
                     .foregroundColor(Theme.textPrimary)
             }
+            #if os(macOS)
+            // Viewport-Raster: Überlanger Inhalt scrollt in der Karte. In
+            // Karten mit natürlicher Höhe (`fixedSize` im Spalten-Layout)
+            // verhält sich der ScrollView neutral — ideale Höhe = Inhalt.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    content()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            #else
             content()
+            #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardStyle()
+        .padding(16)
+        .environment(\.insideGlassPanel, true)
+        // Element-Regel: Karten frosten IMMER — Liquid Glass gehört nur dem
+        // Gesamthintergrund dahinter (SlurmyPaneBackground).
+        .slurmyFrostCard(cornerRadius: 14)
     }
 }
 
 private struct LabeledRow: View {
-    let label: String
+    // Label als LocalizedStringKey (Literale lokalisieren automatisch),
+    // der Wert bleibt roher Text (Host, Benutzername, Port).
+    let label: LocalizedStringKey
     let value: String
     var body: some View {
         HStack {

@@ -22,11 +22,9 @@
 	<string>1</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
+	<!-- No NSAppTransportSecurity override: the app speaks SSH over raw libssh2
+	     sockets, not URLSession, so ATS never applied to its traffic.
+	     NSAllowsArbitraryLoads was unnecessary attack surface. -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

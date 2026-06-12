@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Big translucent "liquid glass" sheet for partition deep-dives.
-/// Uses macOS Materials (`.ultraThinMaterial`) layered over a colored
-/// gradient so the background of the host window subtly bleeds through —
-/// matches the Tahoe-style sheet aesthetic.
+/// Big "liquid glass" sheet for partition deep-dives. The glass itself comes
+/// from the presenting `GlassPanel` (native Liquid Glass on macOS 26+/iOS 26,
+/// legacy frost on macOS 14/15); the content inside stays on opaque
+/// `Theme.surface` cards — per HIG no glass-on-glass stacking.
 struct PartitionSheetView: View {
     let partition: String
     let usage: PartitionUsage?
@@ -17,7 +17,14 @@ struct PartitionSheetView: View {
     @State private var expanded: Set<String> = []
     /// Cached per-node `scontrol show node` key/values.
     @State private var nodeDetails: [String: [String: String]] = [:]
-    @State private var loadingNode: String? = nil
+    // Set, not a single slot: expanding two nodes quickly used to clobber each
+    // other's spinner (the first's defer cleared the shared flag).
+    @State private var loadingNodes: Set<String> = []
+    /// JobsViewModel.loadPartition schluckt Fetch-Fehler (try?) und meldet
+    /// keinen Fehlerzustand — ohne Frist bliebe der Spinner bei einem
+    /// fehlgeschlagenen sinfo/scontrol ewig stehen. Nach Ablauf zeigt das Sheet
+    /// stattdessen Fehlertext + "Erneut versuchen".
+    @State private var loadTimedOut = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,14 +43,45 @@ struct PartitionSheetView: View {
                         scontrolCard
                     }
                     if nodes.isEmpty && details.isEmpty {
-                        ProgressView("Lade Partition-Details…")
-                            .tint(Theme.accent)
-                            .padding(.vertical, 60)
+                        if loadTimedOut {
+                            loadFailedState
+                        } else {
+                            SlurmyLoadingState(caption: "Lade Partition-Details…")
+                                .padding(.vertical, 60)
+                                .task {
+                                    // Großzügige Frist: der Fetch teilt sich die
+                                    // serielle SSH-Queue mit den Polls. Kommt bis
+                                    // dahin nichts an, war der Fetch (still)
+                                    // fehlgeschlagen.
+                                    try? await Task.sleep(nanoseconds: 12_000_000_000)
+                                    if !Task.isCancelled { loadTimedOut = true }
+                                }
+                        }
                     }
                 }
                 .padding(24)
             }
         }
+    }
+
+    /// Fehler + Retry statt Endlos-Spinner (gleiche Optik wie in
+    /// NodesOverviewView / GpuHoursSheetView).
+    private var loadFailedState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundColor(Theme.danger)
+            Text("Partition-Details konnten nicht geladen werden — Verbindung prüfen.")
+                .font(.callout)
+                .foregroundColor(Theme.danger)
+                .multilineTextAlignment(.center)
+            Button("Erneut versuchen") {
+                loadTimedOut = false
+                onRefresh()
+            }
+            .slurmyGlassButton()
+        }
+        .padding(.vertical, 60)
     }
 
     // MARK: – Header
@@ -68,24 +106,24 @@ struct PartitionSheetView: View {
                     .foregroundStyle(.primary)
             }
             Spacer()
-            Button(action: onRefresh) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .help("Aktualisieren")
+            SlurmyGlassButtonGroup {
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .help("Aktualisieren")
 
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .slurmyGlassCircleButton()
+                .keyboardShortcut(.cancelAction)
+                .help("Schliessen (Esc)")
             }
-            .buttonStyle(.plain)
-            .background(.thinMaterial, in: Circle())
-            .keyboardShortcut(.cancelAction)
-            .help("Schliessen (Esc)")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 18)
@@ -135,16 +173,21 @@ struct PartitionSheetView: View {
                 Spacer()
             }
             Divider().background(Theme.hairline)
+            // Vokabular deckungsgleich mit der GPU-Legende (GpuComponents):
+            // „meine" / „preemptierbar" / „belegt" / „frei".
+            // String-Parameter lokalisieren nicht automatisch → String(localized:).
             HStack(spacing: 18) {
-                metric("\(u.ownAllocated)", "mine", Theme.ownNonPreempt)
-                metric("\(u.preemptible)", "preemptible", Theme.ownPreempt)
-                metric("\(u.otherAllocated)", "other", Theme.otherNonPreempt)
-                metric("\(u.availableGpus)", "frei", Theme.textSecondary)
+                metric("\(u.ownAllocated)", String(localized: "meine"), Theme.ownNonPreempt)
+                metric("\(u.preemptible)", String(localized: "preemptierbar"), Theme.ownPreempt)
+                metric("\(u.otherAllocated)", String(localized: "belegt"), Theme.otherNonPreempt)
+                metric("\(u.availableGpus)", String(localized: "frei"), Theme.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // Opake Content-Karte — auf dem nativen Glas-Panel kein Material mehr
+        // (Glas-auf-Glas), siehe HIG.
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Theme.hairline, lineWidth: 0.5)
@@ -175,21 +218,28 @@ struct PartitionSheetView: View {
             VStack(spacing: 8) {
                 ForEach(nodes) { node in
                     VStack(spacing: 0) {
-                        nodeRow(node)
-                            .contentShape(Rectangle())
-                            .onTapGesture { toggleNode(node.name) }
+                        // Button statt onTapGesture: Button-Trait + Aktion, damit
+                        // die Node-Details auch per VoiceOver erreichbar sind.
+                        Button {
+                            toggleNode(node.name)
+                        } label: {
+                            nodeRow(node)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("GPU-Details ein-/ausblenden")
                         if expanded.contains(node.name) {
                             nodeDetailBlock(node)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 8))
                 }
             }
         }
-        .animation(.snappy(duration: 0.2), value: expanded)
+        .motion(.snappy(duration: 0.2), value: expanded)
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Theme.hairline, lineWidth: 0.5)
@@ -282,8 +332,8 @@ struct PartitionSheetView: View {
 
     private func fetchNode(_ name: String) async {
         guard let slurm = appState.slurm else { return }
-        loadingNode = name
-        defer { loadingNode = nil }
+        loadingNodes.insert(name)
+        defer { loadingNodes.remove(name) }
         if let d = try? await slurm.fetchNodeDetails(name) {
             nodeDetails[name] = d
         }
@@ -294,7 +344,7 @@ struct PartitionSheetView: View {
         let d = nodeDetails[node.name]
         VStack(alignment: .leading, spacing: 12) {
             Divider().background(Theme.hairline)
-            if d == nil && loadingNode == node.name {
+            if d == nil && loadingNodes.contains(node.name) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Lade scontrol show node…").font(.caption).foregroundStyle(.secondary)
@@ -343,11 +393,11 @@ struct PartitionSheetView: View {
                     }
                 }
                 HStack(spacing: 14) {
-                    gpuBadge("\(used.count) belegt", Theme.otherNonPreempt)
+                    gpuBadge(String(localized: "\(used.count) belegt"), Theme.otherNonPreempt)
                     if !used.indices.isEmpty {
                         Text("IDX \(used.indices)").font(.caption2.monospaced()).foregroundStyle(.secondary)
                     }
-                    gpuBadge("\(free) frei", Theme.gpuFree)
+                    gpuBadge(String(localized: "\(free) frei"), Theme.gpuFree)
                 }
             } else {
                 Text("Keine GPUs auf diesem Knoten").font(.caption).foregroundStyle(.secondary)
@@ -420,7 +470,7 @@ struct PartitionSheetView: View {
             }
         }
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Theme.hairline, lineWidth: 0.5)

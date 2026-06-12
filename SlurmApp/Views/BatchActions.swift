@@ -7,14 +7,18 @@ enum BatchAction: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var title: String {
         switch self {
-        case .cancel:    "Abbrechen"
-        case .qos:       "QoS ändern"
-        case .partition: "Partition ändern"
-        case .hold:      "Zurückhalten"
-        case .release:   "Freigeben"
-        case .requeue:   "Neu einreihen"
+        // "Beenden", nicht "Abbrechen": Der Bestätigungsdialog hätte sonst
+        // zwei identisch beschriftete Buttons (destruktiv + Dismiss).
+        // (Englisch analog "Terminate" statt "Cancel".)
+        case .cancel:    String(localized: "Beenden")
+        case .qos:       String(localized: "QoS ändern")
+        case .partition: String(localized: "Partition ändern")
+        case .hold:      String(localized: "Zurückhalten")
+        case .release:   String(localized: "Freigeben")
+        case .requeue:   String(localized: "Neu einreihen")
         }
     }
 
@@ -48,10 +52,10 @@ enum BatchAction: String, CaseIterable, Identifiable {
     /// Verb für den Bestätigungsdialog (Aktionen ohne Wert).
     var confirmVerb: String {
         switch self {
-        case .cancel:  "abbrechen"
-        case .hold:    "zurückhalten"
-        case .release: "freigeben"
-        case .requeue: "neu einreihen"
+        case .cancel:  String(localized: "beenden")
+        case .hold:    String(localized: "zurückhalten")
+        case .release: String(localized: "freigeben")
+        case .requeue: String(localized: "neu einreihen")
         case .qos, .partition: ""
         }
     }
@@ -95,7 +99,8 @@ struct BatchValueSheet: View {
             }
             .navigationTitle(action.title)
             .inlineNavTitle()
-            .navBarBackground(Theme.background)
+            // Kein opaker Nav-Bar-Hintergrund mehr — die System-Bar bringt auf
+            // iOS 26 nativ Liquid Glass mit und sampelt den Theme-Content.
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Schließen") { dismiss() }
@@ -157,16 +162,19 @@ struct BatchValueSheet: View {
     }
 
     private var applyButton: some View {
+        // Prominenter Glas-Button (Fallback: .borderedProminent) statt der
+        // manuellen Accent-Fläche — Disabled-Optik übernimmt das System.
         Button {
             onApply(value.trimmingCharacters(in: .whitespaces))
             dismiss()
         } label: {
             Label("Anwenden", systemImage: "checkmark.circle.fill")
-                .frame(maxWidth: .infinity).padding(.vertical, 12)
-                .background(canApply ? Theme.accent : Theme.surfaceElevated)
-                .foregroundColor(canApply ? Theme.onAccent : Theme.textSecondary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .font(.callout.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
         }
+        .slurmyGlassButton(prominent: true)
+        .tint(Theme.accent)
         .disabled(!canApply)
     }
 

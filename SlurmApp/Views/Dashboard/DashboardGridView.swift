@@ -17,12 +17,14 @@ struct DashboardGridView<Content: View>: View {
             let cols = store.layout.columns
             let rows = store.layout.rows
             let cellW = max(1, (geo.size.width - spacing * CGFloat(cols - 1)) / CGFloat(cols))
-            // Stretch the row height so the grid fills the whole viewport instead
-            // of leaving empty space below — but never shrink below `rowHeight`,
-            // so tall layouts still scroll. In edit mode keep the fixed height so
-            // there's room to drag/resize and add rows beneath.
+            // Ansichtsmodus: Zeilenhöhe so skalieren, dass das Raster den
+            // Viewport EXAKT füllt — nie außen scrollen; zu kleine Widgets
+            // scrollen in sich (ihre Inhalte bringen eigene ScrollViews mit).
+            // Unter 96 pt pro Zeile wird Inhalt unbedienbar, dann greift doch
+            // der äußere Scroll als Notausgang. Im Edit-Modus feste Höhe,
+            // damit Platz zum Ziehen/Vergrößern bleibt.
             let fitRowH = (geo.size.height - spacing * CGFloat(rows - 1)) / CGFloat(max(1, rows))
-            let rowH = editing ? rowHeight : max(rowHeight, fitRowH)
+            let rowH = editing ? rowHeight : max(96, fitRowH)
             let canvasH = CGFloat(rows) * (rowH + spacing) - spacing
 
             ScrollView(.vertical) {
@@ -51,7 +53,9 @@ struct DashboardGridView<Content: View>: View {
             .scrollDisabled(false)
         }
         .padding(spacing)
-        .background(Theme.background)
+        // Die Leinwand HINTER den Widgets: Liquid Glas (wenn aktiv) — die
+        // Widgets selbst frosten opak (siehe WidgetTile).
+        .background(SlurmyPaneBackground().ignoresSafeArea())
     }
 }
 
@@ -89,13 +93,23 @@ private struct WidgetTile<Content: View>: View {
             .offset(x: originX(f.x) + dragOffset.width,
                     y: originY(f.y) + dragOffset.height)
             .zIndex(dragging ? 10 : 0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: f)
+            .motion(.spring(response: 0.3, dampingFraction: 0.85), value: f)
     }
 
     private var tileBody: some View {
         ZStack(alignment: .topLeading) {
             content
+                // Frost-Element: durchgehend opak (Pane-Hintergründe im
+                // Inneren de-glasen sich über das Environment-Flag) mit
+                // Hairline — Glas gibt es nur ZWISCHEN den Widgets.
+                .environment(\.insideFrostElement, true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 0.5)
+                )
                 .disabled(editing)
                 .allowsHitTesting(!editing)
 
@@ -168,7 +182,7 @@ private struct WidgetTile<Content: View>: View {
                 candidate.y = Int(max(0, (originY(f.y) + v.translation.height) / stepY + 0.5))
                 let accepted = commit(candidate)
                 _ = accepted // bei Ablehnung sorgt Reset für Snap-Back
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                withMotion(.spring(response: 0.3, dampingFraction: 0.85)) {
                     dragOffset = .zero
                     dragging = false
                 }
@@ -187,7 +201,7 @@ private struct WidgetTile<Content: View>: View {
                 candidate.w = Int((pxW(f.w) + v.translation.width + spacing) / stepX + 0.5)
                 candidate.h = Int((pxH(f.h) + v.translation.height + spacing) / stepY + 0.5)
                 _ = commit(candidate)
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                withMotion(.spring(response: 0.3, dampingFraction: 0.85)) {
                     resizeDelta = .zero
                     dragging = false
                 }

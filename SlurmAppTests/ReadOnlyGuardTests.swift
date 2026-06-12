@@ -51,4 +51,28 @@ final class ReadOnlyGuardTests: XCTestCase {
         XCTAssertThrowsError(try ReadOnlyGuard.assertSafe("scancel 1"))
         XCTAssertNoThrow(try ReadOnlyGuard.assertSafe("squeue"))
     }
+
+    // MARK: – Bypass regressions (security fixes)
+
+    func testRejectsCommandSubstitution() {
+        XCTAssertFalse(ReadOnlyGuard.isSafe("echo $(scancel 1)"))
+        XCTAssertFalse(ReadOnlyGuard.isSafe("echo `scancel 1`"))
+        XCTAssertFalse(ReadOnlyGuard.isSafe("cat ${HOME}/x"))
+    }
+
+    func testRejectsNewlineAndAmpersandSeparators() {
+        XCTAssertFalse(ReadOnlyGuard.isSafe("echo ok\nscancel 12345"))
+        XCTAssertFalse(ReadOnlyGuard.isSafe("echo x & scancel 1"))
+    }
+
+    func testRejectsAwkSedAndSortOutput() {
+        XCTAssertFalse(ReadOnlyGuard.isSafe("awk 'BEGIN{system(\"scancel 1\")}'"))
+        XCTAssertFalse(ReadOnlyGuard.isSafe("sed -e '1e scancel 1' f"))
+        XCTAssertFalse(ReadOnlyGuard.isSafe("sort -o /etc/passwd f"))
+        XCTAssertFalse(ReadOnlyGuard.isSafe("squeue | sort --output=/tmp/x"))
+    }
+
+    func testAllowsSstatForMemory() {
+        XCTAssertTrue(ReadOnlyGuard.isSafe("sstat -j 123.batch --format=MaxRSS -n -P"))
+    }
 }
