@@ -22,6 +22,12 @@ struct SettingsView: View {
         #endif
     }
 
+    /// Sprache der Oberfläche ("de"/"en"). Deutsch ist registrierter Default
+    /// (SlurmApp.init); Englisch wird als persistierter AppleLanguages-Wert
+    /// gesetzt und gewinnt dann dauerhaft. Wirksam erst nach Neustart.
+    @State private var languageCode: String = "de"
+    @State private var languageChanged = false
+
     @AppStorage("appearance") private var appearanceRaw: String = AppAppearance.system.rawValue
     @AppStorage(AppTheme.storageKey) private var accentThemeRaw: String = AppTheme.default.rawValue
     @AppStorage(AppColorTheme.storageKey) private var colorThemeRaw: String = AppColorTheme.default.rawValue
@@ -79,6 +85,8 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     appearanceCard
                         .frame(maxHeight: .infinity)
+                    languageCard
+                        .fixedSize(horizontal: false, vertical: true)
                     jobsListCard
                         .fixedSize(horizontal: false, vertical: true)
                     textSizeCard
@@ -173,6 +181,7 @@ struct SettingsView: View {
             VStack(spacing: 16) {
                 brandingHeader
                 appearanceCard
+                languageCard
                 colorThemeCard
                 if activeColorTheme.allowsAccentOverride {
                     themeCard
@@ -295,6 +304,78 @@ struct SettingsView: View {
                     .foregroundColor(Theme.textSecondary)
             }
         }
+    }
+
+    // MARK: – Sprache
+
+    /// Deutsch/Englisch-Umschalter. Deutsch = registrierter Default
+    /// (AppleLanguages wird ENTFERNT, der in SlurmApp.init registrierte
+    /// de-Default greift wieder); Englisch = persistierter Override.
+    /// Greift erst nach einem Neustart — SwiftUI lädt den Katalog beim Start.
+    private var languageCard: some View {
+        SettingsSection(title: "Sprache", systemImage: "globe") {
+            Picker("Sprache", selection: $languageCode) {
+                // Sprachnamen bewusst in der jeweiligen Sprache (nicht übersetzen).
+                Text(verbatim: "Deutsch").tag("de")
+                Text(verbatim: "English").tag("en")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if languageChanged {
+                HStack(spacing: 8) {
+                    Label {
+                        Text("Neustart erforderlich, damit die Sprache wirksam wird.")
+                            .font(.caption)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .font(.caption)
+                    .foregroundColor(Theme.warning)
+                    Spacer()
+                    #if os(macOS)
+                    Button("Jetzt beenden") { NSApplication.shared.terminate(nil) }
+                        .font(.caption.bold())
+                        .buttonStyle(.plain)
+                        .foregroundColor(Theme.accent)
+                    #endif
+                }
+            } else {
+                Text("Sprache der Oberfläche. Standard: Deutsch.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            }
+        }
+        .onAppear { languageCode = Self.storedLanguage() }
+        .onChange(of: languageCode) { _, newValue in
+            // onAppear setzt den Initialwert — nur echte Wechsel anwenden.
+            guard newValue != Self.storedLanguage() else { return }
+            applyLanguage(newValue)
+        }
+    }
+
+    /// Aktuell wirksame Sprache: persistierter AppleLanguages-Wert gewinnt,
+    /// sonst Deutsch (registrierter Default). Bewusst über die persistente
+    /// Domain gelesen — `UserDefaults.array(forKey:)` würde auch den
+    /// registrierten Default liefern und Override/Default ununterscheidbar machen.
+    private static func storedLanguage() -> String {
+        let domain = Bundle.main.bundleIdentifier.flatMap {
+            UserDefaults.standard.persistentDomain(forName: $0)
+        }
+        if let langs = domain?["AppleLanguages"] as? [String], let first = langs.first {
+            return first.hasPrefix("en") ? "en" : "de"
+        }
+        return "de"
+    }
+
+    private func applyLanguage(_ code: String) {
+        if code == "de" {
+            // Registrierter de-Default (SlurmApp.init) greift wieder.
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        } else {
+            UserDefaults.standard.set([code], forKey: "AppleLanguages")
+        }
+        languageChanged = true
     }
 
     /// Full theme picker — live-preview swatch tiles rendered from each theme's
@@ -459,7 +540,8 @@ struct SettingsView: View {
     }
 
     private func presetButton(_ preset: DashboardPreset) -> some View {
-        let selected = dashboard.presetName == preset.label
+        // Sprachneutraler Vergleich — Labels sind lokalisiert.
+        let selected = dashboard.isActive(preset)
         return Button {
             dashboard.apply(preset)
             withMotion { dashboardEnabled = true }
@@ -556,7 +638,9 @@ struct SettingsView: View {
                 LabeledRow(label: "Host", value: c.host)
                 LabeledRow(label: "Benutzer", value: c.username)
                 LabeledRow(label: "Port", value: String(c.port))
-                LabeledRow(label: "Auth", value: c.authMethod == .privateKey ? "SSH-Schlüssel" : "Passwort")
+                LabeledRow(label: "Auth", value: c.authMethod == .privateKey
+                    ? String(localized: "SSH-Schlüssel")
+                    : String(localized: "Passwort"))
             } else {
                 Text("Keine gespeicherten Zugangsdaten.")
                     .font(.caption)
@@ -674,7 +758,7 @@ struct SettingsView: View {
 
     private func ping() async {
         guard let slurm = appState.slurm else {
-            pingResult = "✗ Keine Verbindung."
+            pingResult = String(localized: "✗ Keine Verbindung.")
             return
         }
         pinging = true; defer { pinging = false }
@@ -708,7 +792,9 @@ struct SettingsView: View {
 /// INNERHALB der Karte (die Kopfzeile bleibt stehen) — die Settings-Seite
 /// selbst scrollt dort nie; auf iOS scrollt wie bisher die ganze Seite.
 private struct SettingsSection<Content: View>: View {
-    let title: String
+    // LocalizedStringKey statt String: Die Literal-Titel lokalisieren so
+    // automatisch über den Katalog.
+    let title: LocalizedStringKey
     let systemImage: String
     @ViewBuilder var content: () -> Content
 
@@ -746,7 +832,9 @@ private struct SettingsSection<Content: View>: View {
 }
 
 private struct LabeledRow: View {
-    let label: String
+    // Label als LocalizedStringKey (Literale lokalisieren automatisch),
+    // der Wert bleibt roher Text (Host, Benutzername, Port).
+    let label: LocalizedStringKey
     let value: String
     var body: some View {
         HStack {

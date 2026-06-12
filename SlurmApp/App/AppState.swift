@@ -191,13 +191,14 @@ enum ConnectionStatus: Equatable {
     case degraded(String)
     case failed(String)
 
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .disconnected: return "nicht verbunden"
-        case .connecting: return "verbinde…"
-        case .connected: return "verbunden"
-        case .degraded: return "Verbindung instabil…"
-        case .failed(let msg): return "Fehler: \(msg)"
+        case .disconnected: return String(localized: "nicht verbunden")
+        case .connecting: return String(localized: "verbinde…")
+        case .connected: return String(localized: "verbunden")
+        case .degraded: return String(localized: "Verbindung instabil…")
+        case .failed(let msg): return String(localized: "Fehler: \(msg)")
         }
     }
 }

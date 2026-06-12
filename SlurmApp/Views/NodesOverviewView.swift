@@ -92,9 +92,10 @@ struct NodesOverviewView: View {
         let gpuNodes = nodes.filter { gpu($0).count > 0 }
         let totalGpus = gpuNodes.reduce(0) { $0 + gpu($1).count }
         let types = Set(gpuNodes.compactMap { gpu($0).type?.uppercased() }).sorted()
+        // String-Parameter lokalisieren nicht automatisch → String(localized:).
         let stats = HStack(spacing: 18) {
-            stat("\(nodes.count)", "Knoten")
-            stat("\(gpuNodes.count)", "mit GPU")
+            stat("\(nodes.count)", String(localized: "Knoten"))
+            stat("\(gpuNodes.count)", String(localized: "mit GPU"))
             stat("\(totalGpus)", "GPUs" + (types.isEmpty ? "" : " (\(types.joined(separator: ", ")))"))
         }
         if isCompact {
@@ -333,7 +334,7 @@ struct NodesOverviewView: View {
     // MARK: – Fetch
 
     private func reload() async {
-        guard let slurm = appState.slurm else { error = "Keine SSH-Verbindung."; return }
+        guard let slurm = appState.slurm else { error = String(localized: "Keine SSH-Verbindung."); return }
         loading = true
         defer { loading = false }
         do {

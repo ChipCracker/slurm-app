@@ -12,11 +12,12 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .system: return "Automatisch"
-        case .light:  return "Hell"
-        case .dark:   return "Dunkel"
+        case .system: return String(localized: "Automatisch")
+        case .light:  return String(localized: "Hell")
+        case .dark:   return String(localized: "Dunkel")
         }
     }
 
@@ -50,16 +51,17 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .blue:     return "Blau"
-        case .indigo:   return "Indigo"
-        case .teal:     return "Türkis"
-        case .green:    return "Grün"
-        case .purple:   return "Violett"
-        case .orange:   return "Orange"
-        case .rose:     return "Rosé"
-        case .graphite: return "Graphit"
+        case .blue:     return String(localized: "Blau")
+        case .indigo:   return String(localized: "Indigo")
+        case .teal:     return String(localized: "Türkis")
+        case .green:    return String(localized: "Grün")
+        case .purple:   return String(localized: "Violett")
+        case .orange:   return String(localized: "Orange")
+        case .rose:     return String(localized: "Rosé")
+        case .graphite: return String(localized: "Graphit")
         }
     }
 

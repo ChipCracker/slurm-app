@@ -7,16 +7,18 @@ enum BatchAction: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var title: String {
         switch self {
         // "Beenden", nicht "Abbrechen": Der Bestätigungsdialog hätte sonst
         // zwei identisch beschriftete Buttons (destruktiv + Dismiss).
-        case .cancel:    "Beenden"
-        case .qos:       "QoS ändern"
-        case .partition: "Partition ändern"
-        case .hold:      "Zurückhalten"
-        case .release:   "Freigeben"
-        case .requeue:   "Neu einreihen"
+        // (Englisch analog "Terminate" statt "Cancel".)
+        case .cancel:    String(localized: "Beenden")
+        case .qos:       String(localized: "QoS ändern")
+        case .partition: String(localized: "Partition ändern")
+        case .hold:      String(localized: "Zurückhalten")
+        case .release:   String(localized: "Freigeben")
+        case .requeue:   String(localized: "Neu einreihen")
         }
     }
 
@@ -50,10 +52,10 @@ enum BatchAction: String, CaseIterable, Identifiable {
     /// Verb für den Bestätigungsdialog (Aktionen ohne Wert).
     var confirmVerb: String {
         switch self {
-        case .cancel:  "beenden"
-        case .hold:    "zurückhalten"
-        case .release: "freigeben"
-        case .requeue: "neu einreihen"
+        case .cancel:  String(localized: "beenden")
+        case .hold:    String(localized: "zurückhalten")
+        case .release: String(localized: "freigeben")
+        case .requeue: String(localized: "neu einreihen")
         case .qos, .partition: ""
         }
     }

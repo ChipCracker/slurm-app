@@ -125,9 +125,9 @@ final class JobDetailViewModel: ObservableObject {
         guard let slurm = appState?.slurm else { return nil }
         do {
             let result = try await slurm.updateJobQos(job.jobId, qos: newQos)
-            return result.isEmpty ? "QoS auf \(newQos) gesetzt." : result
+            return result.isEmpty ? String(localized: "QoS auf \(newQos) gesetzt.") : result
         } catch {
-            return "Fehler: \(error.localizedDescription)"
+            return String(localized: "Fehler: \(error.localizedDescription)")
         }
     }
 
@@ -135,9 +135,9 @@ final class JobDetailViewModel: ObservableObject {
         guard let slurm = appState?.slurm else { return nil }
         do {
             let result = try await slurm.updateJobPartition(job.jobId, partition: newPartition)
-            return result.isEmpty ? "Partition auf \(newPartition) gesetzt." : result
+            return result.isEmpty ? String(localized: "Partition auf \(newPartition) gesetzt.") : result
         } catch {
-            return "Fehler: \(error.localizedDescription)"
+            return String(localized: "Fehler: \(error.localizedDescription)")
         }
     }
 
@@ -167,13 +167,13 @@ final class JobDetailViewModel: ObservableObject {
 
     private func readLog(slurm: SlurmService, path: String?, stream: String) async -> (text: String, hasContent: Bool) {
         guard let path, !path.isEmpty else {
-            return ("[Kein \(stream)-Pfad in scontrol show job]", false)
+            return (String(localized: "[Kein \(stream)-Pfad in scontrol show job]"), false)
         }
         do {
             let text = try await slurm.tailLog(path: path, lines: 200)
-            return text.isEmpty ? ("[\(stream) ist (noch) leer]\n\(path)", false) : (text, true)
+            return text.isEmpty ? (String(localized: "[\(stream) ist (noch) leer]\n\(path)"), false) : (text, true)
         } catch {
-            return ("[Konnte \(stream) nicht lesen: \(error.localizedDescription)]\n\(path)", false)
+            return (String(localized: "[Konnte \(stream) nicht lesen: \(error.localizedDescription)]\n\(path)"), false)
         }
     }
 
@@ -461,7 +461,7 @@ struct JobDetailView: View {
                     .motion(Motion.smooth, value: displayedState)
                 Button {
                     bookmarks.add(Bookmark(jobId: vm.job.jobId, label: vm.job.name))
-                    actionMessage = "Bookmark gespeichert."
+                    actionMessage = String(localized: "Bookmark gespeichert.")
                 } label: {
                     Image(systemName: "bookmark")
                         .foregroundColor(Theme.accent)
@@ -591,8 +591,10 @@ struct JobDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
+    // LocalizedStringKey statt String: Die Literal-Labels („Laufzeit",
+    // „Speicher", „Grund", …) lokalisieren so automatisch über den Katalog.
     @ViewBuilder
-    private func compactStat(_ label: String, _ value: String, isSkeleton: Bool = false) -> some View {
+    private func compactStat(_ label: LocalizedStringKey, _ value: String, isSkeleton: Bool = false) -> some View {
         HStack(spacing: 8) {
             Text(label)
                 .font(.caption)
@@ -1080,7 +1082,9 @@ struct JobDetailView: View {
         ZStack {
             Shortcut.hiddenButton(.toggleFollow) {
                 vm.followMode.toggle()
-                actionMessage = "Follow-Mode: \(vm.followMode ? "an" : "aus")"
+                actionMessage = vm.followMode
+                    ? String(localized: "Follow-Mode: an")
+                    : String(localized: "Follow-Mode: aus")
             }
             Shortcut.hiddenButton(.focusLiveGpu) {
                 withMotion { proxy.scrollTo("liveGpu", anchor: .top) }
@@ -1103,9 +1107,9 @@ struct JobDetailView: View {
                     : (vm.stdoutHasContent ? vm.stdout : "")
                 if !active.isEmpty {
                     Clipboard.copy(active)
-                    actionMessage = "Log kopiert (\(active.count) Zeichen)."
+                    actionMessage = String(localized: "Log kopiert (\(active.count) Zeichen).")
                 } else {
-                    actionMessage = "Kein Log-Inhalt vorhanden."
+                    actionMessage = String(localized: "Kein Log-Inhalt vorhanden.")
                 }
             }
         }
@@ -1146,10 +1150,10 @@ struct JobDetailView: View {
             // Jobliste sofort aktualisieren statt bis zu 10s auf den
             // nächsten stillen Poll zu warten (Listener: MainTabView).
             cancelRequested = true
-            actionMessage = "scancel gesendet."
+            actionMessage = String(localized: "scancel gesendet.")
             NotificationCenter.default.post(name: .requestJobsRefresh, object: nil)
         } catch {
-            actionMessage = "Fehler: \(error.localizedDescription)"
+            actionMessage = String(localized: "Fehler: \(error.localizedDescription)")
         }
     }
 
@@ -1329,7 +1333,9 @@ struct LogDetailSheetView: View {
     private var logBody: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                Text(content.isEmpty ? "[\(title) ist (noch) leer]" : content)
+                // Ternary mit String-Variable → kein LocalizedStringKey;
+                // Platzhalter daher explizit über den Katalog lokalisieren.
+                Text(content.isEmpty ? String(localized: "[\(title) ist (noch) leer]") : content)
                     .font(.system(.callout, design: .monospaced))
                     .foregroundColor(Theme.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)

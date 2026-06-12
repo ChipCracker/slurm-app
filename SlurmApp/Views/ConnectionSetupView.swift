@@ -141,7 +141,7 @@ struct ConnectionSetupView: View {
                     isPasting = false
                 }
             case .failure(let err):
-                testResult = "Datei konnte nicht gelesen werden: \(err.localizedDescription)"
+                testResult = String(localized: "Datei konnte nicht gelesen werden: \(err.localizedDescription)")
             }
         }
     }
@@ -158,7 +158,7 @@ struct ConnectionSetupView: View {
     private func loadedKeyCard(pem: String) -> some View {
         let keyType = detectKeyType(pem)
         let bytes = pem.utf8.count
-        let source = selectedKeyName ?? "Schlüssel hinterlegt"
+        let source = selectedKeyName ?? String(localized: "Schlüssel hinterlegt")
         return HStack(spacing: 10) {
             Image(systemName: "lock.shield.fill")
                 .foregroundColor(Theme.success)
@@ -267,7 +267,7 @@ struct ConnectionSetupView: View {
         if trimmed.hasPrefix("-----BEGIN RSA PRIVATE KEY-----")     { return "RSA (PKCS#1)" }
         if trimmed.hasPrefix("-----BEGIN EC PRIVATE KEY-----")      { return "EC (PEM)" }
         if trimmed.hasPrefix("-----BEGIN PRIVATE KEY-----")         { return "PKCS#8" }
-        return "Unbekannt"
+        return String(localized: "Unbekannt")
     }
 
     private var keyImportButton: some View {
@@ -311,7 +311,7 @@ struct ConnectionSetupView: View {
             selectedKeyName = key.name
             testResult = nil
         } catch {
-            testResult = "Konnte \(key.name) nicht lesen: \(error.localizedDescription)"
+            testResult = String(localized: "Konnte \(key.name) nicht lesen: \(error.localizedDescription)")
         }
     }
 
@@ -330,7 +330,9 @@ struct ConnectionSetupView: View {
         .frame(width: 80)
     }
 
-    private func field(label: String, text: Binding<String>, prompt: String) -> some View {
+    // LocalizedStringKey statt String: Die Literal-Labels lokalisieren so
+    // automatisch über den Katalog; die Prompts (Beispielwerte) bleiben roh.
+    private func field(label: LocalizedStringKey, text: Binding<String>, prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption)
@@ -344,7 +346,7 @@ struct ConnectionSetupView: View {
         }
     }
 
-    private func secureField(label: String, text: Binding<String>) -> some View {
+    private func secureField(label: LocalizedStringKey, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption)
@@ -399,14 +401,14 @@ struct ConnectionSetupView: View {
 
     private func testConnection() async {
         testing = true; defer { testing = false }
-        testResult = "Verbinde mit \(creds.host):\(creds.port)…"
+        testResult = String(localized: "Verbinde mit \(creds.host):\(creds.port)…")
         do {
             let client = try await SSHClient.connect(credentials: creds)
             let info = try await client.ping()
             await client.close()
-            testResult = "✓ Verbindung ok\n\(info.trimmingCharacters(in: .whitespacesAndNewlines))"
+            testResult = String(localized: "✓ Verbindung ok\n\(info.trimmingCharacters(in: .whitespacesAndNewlines))")
         } catch {
-            testResult = "✗ Fehler: \(error.localizedDescription)"
+            testResult = String(localized: "✗ Fehler: \(error.localizedDescription)")
         }
     }
 }

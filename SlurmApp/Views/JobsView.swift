@@ -1866,8 +1866,10 @@ struct JobsView: View {
     #if os(iOS)
     // MARK: – iOS kompakte Jobs-Liste (Touch)
 
+    // String-Array ⇒ lokalisiert nicht automatisch wie Text-Literale.
     private static let sortColumnLabels =
-        ["ID", "Name", "Status", "User", "QoS", "Partition", "GPU", "CPU", "Speicher", "Laufzeit"]
+        ["ID", "Name", "Status", "User", "QoS", "Partition", "GPU", "CPU",
+         String(localized: "Speicher"), String(localized: "Laufzeit")]
 
     private var jobListCompact: some View {
         let real = visibleJobs

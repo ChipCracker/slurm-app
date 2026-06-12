@@ -267,7 +267,7 @@ struct GpuPartitionPill: View {
                     miniLegend(seg.label, count: seg.count, color: seg.color, symbol: seg.symbol)
                 }
                 Spacer(minLength: 0)
-                miniLegend("frei", count: usage.availableGpus, color: Theme.gpuFree, symbol: Self.freeSymbol)
+                miniLegend(String(localized: "frei"), count: usage.availableGpus, color: Theme.gpuFree, symbol: Self.freeSymbol)
             }
             .help("🔒 = garantiert · ⏏ = preemptierbar (verdrängbar) · ◌ = frei")
         }
@@ -290,19 +290,20 @@ struct GpuPartitionPill: View {
     }
 
     /// Non-overlapping buckets matching the four bar segments, skipping zeros.
+    /// String-Parameter lokalisieren nicht automatisch → String(localized:).
     private var segmentLegend: [LegendSeg] {
         var segs: [LegendSeg] = []
         if usage.ownNonPreemptible > 0 {
-            segs.append(.init(label: "meine", count: usage.ownNonPreemptible, color: Theme.ownNonPreempt, symbol: Self.guaranteedSymbol))
+            segs.append(.init(label: String(localized: "meine"), count: usage.ownNonPreemptible, color: Theme.ownNonPreempt, symbol: Self.guaranteedSymbol))
         }
         if usage.ownPreemptible > 0 {
-            segs.append(.init(label: "meine", count: usage.ownPreemptible, color: Theme.ownPreempt, symbol: Self.preemptSymbol))
+            segs.append(.init(label: String(localized: "meine"), count: usage.ownPreemptible, color: Theme.ownPreempt, symbol: Self.preemptSymbol))
         }
         if usage.otherNonPreemptible > 0 {
-            segs.append(.init(label: "belegt", count: usage.otherNonPreemptible, color: Theme.otherNonPreempt, symbol: Self.guaranteedSymbol))
+            segs.append(.init(label: String(localized: "belegt"), count: usage.otherNonPreemptible, color: Theme.otherNonPreempt, symbol: Self.guaranteedSymbol))
         }
         if usage.otherPreemptible > 0 {
-            segs.append(.init(label: "belegt", count: usage.otherPreemptible, color: Theme.otherPreempt, symbol: Self.preemptSymbol))
+            segs.append(.init(label: String(localized: "belegt"), count: usage.otherPreemptible, color: Theme.otherPreempt, symbol: Self.preemptSymbol))
         }
         return segs
     }
@@ -438,7 +439,8 @@ struct DiskQuotasCard: View {
             }
             .frame(height: 5)
             HStack {
-                Text(String(format: "%.0f%% belegt", q.usageRatio * 100))
+                // Lokalisiertes Format — Text(String(format:)) liefe am Katalog vorbei.
+                Text(String(format: String(localized: "%.0f%% belegt"), q.usageRatio * 100))
                 Spacer()
                 Text("Limit \(q.limit)")
             }
@@ -599,18 +601,19 @@ struct GpuHoursCard: View {
 struct GpuLegend: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
+            // String-Parameter lokalisieren nicht automatisch → String(localized:).
             HStack(spacing: 12) {
-                chip(color: Theme.ownNonPreempt, text: "meine", symbol: GpuPartitionPill.guaranteedSymbol)
-                chip(color: Theme.ownPreempt, text: "meine", symbol: GpuPartitionPill.preemptSymbol)
-                chip(color: Theme.otherNonPreempt, text: "belegt", symbol: GpuPartitionPill.guaranteedSymbol)
-                chip(color: Theme.otherPreempt, text: "belegt", symbol: GpuPartitionPill.preemptSymbol)
-                chip(color: Theme.gpuFree, text: "frei", symbol: GpuPartitionPill.freeSymbol)
+                chip(color: Theme.ownNonPreempt, text: String(localized: "meine"), symbol: GpuPartitionPill.guaranteedSymbol)
+                chip(color: Theme.ownPreempt, text: String(localized: "meine"), symbol: GpuPartitionPill.preemptSymbol)
+                chip(color: Theme.otherNonPreempt, text: String(localized: "belegt"), symbol: GpuPartitionPill.guaranteedSymbol)
+                chip(color: Theme.otherPreempt, text: String(localized: "belegt"), symbol: GpuPartitionPill.preemptSymbol)
+                chip(color: Theme.gpuFree, text: String(localized: "frei"), symbol: GpuPartitionPill.freeSymbol)
                 Spacer()
             }
             HStack(spacing: 10) {
-                caption(GpuPartitionPill.guaranteedSymbol, "garantiert")
-                caption(GpuPartitionPill.preemptSymbol, "preemptierbar")
-                caption(GpuPartitionPill.freeSymbol, "frei")
+                caption(GpuPartitionPill.guaranteedSymbol, String(localized: "garantiert"))
+                caption(GpuPartitionPill.preemptSymbol, String(localized: "preemptierbar"))
+                caption(GpuPartitionPill.freeSymbol, String(localized: "frei"))
             }
             .font(.caption2)
             .foregroundColor(Theme.textSecondary)

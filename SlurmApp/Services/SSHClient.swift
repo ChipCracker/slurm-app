@@ -9,23 +9,22 @@ enum SSHError: LocalizedError {
     case unsupportedAuthMethod
     case hostKeyMismatch(expected: String, actual: String)
 
+    // Nutzersichtbare Fehlertexte (landen via localizedDescription in Banner
+    // und Alerts) → explizit über den Katalog lokalisieren.
     var errorDescription: String? {
         switch self {
         case .notConnected:
-            return "Nicht verbunden."
+            return String(localized: "Nicht verbunden.")
         case .commandFailed(let msg, let code):
-            return "Befehl fehlgeschlagen (rc=\(code)): \(msg)"
+            return String(localized: "Befehl fehlgeschlagen (rc=\(code)): \(msg)")
         case .authenticationFailed(let detail):
-            return "Authentifizierung fehlgeschlagen: \(detail)"
+            return String(localized: "Authentifizierung fehlgeschlagen: \(detail)")
         case .connectionFailed(let detail):
-            return "Verbindung fehlgeschlagen: \(detail)"
+            return String(localized: "Verbindung fehlgeschlagen: \(detail)")
         case .unsupportedAuthMethod:
-            return "Auth-Methode wird nicht unterstützt."
+            return String(localized: "Auth-Methode wird nicht unterstützt.")
         case .hostKeyMismatch(let expected, let actual):
-            return "Host-Key stimmt nicht überein – mögliche Man-in-the-Middle-Attacke. "
-                 + "Verbindung aus Sicherheitsgründen abgebrochen.\n"
-                 + "Erwartet: \(SSHClient.shortFingerprint(expected))\n"
-                 + "Erhalten: \(SSHClient.shortFingerprint(actual))"
+            return String(localized: "Host-Key stimmt nicht überein – mögliche Man-in-the-Middle-Attacke. Verbindung aus Sicherheitsgründen abgebrochen.\nErwartet: \(SSHClient.shortFingerprint(expected))\nErhalten: \(SSHClient.shortFingerprint(actual))")
         }
     }
 }
@@ -160,7 +159,7 @@ final class SSHClient: @unchecked Sendable {
                 try session.authenticate(username: creds.username, password: creds.password ?? "")
             case .privateKey:
                 guard let pem = creds.privateKey, !pem.isEmpty else {
-                    throw SSHError.authenticationFailed("Privater Schlüssel fehlt.")
+                    throw SSHError.authenticationFailed(String(localized: "Privater Schlüssel fehlt."))
                 }
                 // In-Memory-Auth: kein Temp-File, keine .pub, kein getpass-
                 // Fallback — funktioniert in der Sandbox.

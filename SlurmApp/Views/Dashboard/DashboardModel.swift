@@ -14,13 +14,14 @@ enum DashboardWidget: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var title: String {
+        // String-Property ⇒ lokalisiert nicht automatisch wie Text-Literale.
         switch self {
-        case .jobs:          "Jobs"
-        case .detail:         "Job-Detail"
-        case .cluster:        "Cluster-Info"
-        case .gpuAllocation:  "GPU-Belegung"
-        case .diskQuotas:     "Speicher-Quota"
-        case .gpuHours:       "GPU-Stunden"
+        case .jobs:          String(localized: "Jobs")
+        case .detail:         String(localized: "Job-Detail")
+        case .cluster:        String(localized: "Cluster-Info")
+        case .gpuAllocation:  String(localized: "GPU-Belegung")
+        case .diskQuotas:     String(localized: "Speicher-Quota")
+        case .gpuHours:       String(localized: "GPU-Stunden")
         }
     }
 
@@ -96,19 +97,19 @@ enum DashboardPreset: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .classic:    "Klassisch"
-        case .twoColumn:  "Zwei Spalten"
-        case .focusJobs:  "Fokus Jobs"
-        case .monitoring: "Monitoring"
+        case .classic:    String(localized: "Klassisch")
+        case .twoColumn:  String(localized: "Zwei Spalten")
+        case .focusJobs:  String(localized: "Fokus Jobs")
+        case .monitoring: String(localized: "Monitoring")
         }
     }
 
     var subtitle: String {
         switch self {
-        case .classic:    "Tabelle + Detail links, Cluster-Karten rechts (wie slurm-tui)"
-        case .twoColumn:  "Tabelle und Detail nebeneinander, volle Höhe"
-        case .focusJobs:  "Tabelle über Detail, je volle Breite"
-        case .monitoring: "GPU-/Quota-/Stunden-Karten groß, Jobs darunter"
+        case .classic:    String(localized: "Tabelle + Detail links, Cluster-Karten rechts (wie slurm-tui)")
+        case .twoColumn:  String(localized: "Tabelle und Detail nebeneinander, volle Höhe")
+        case .focusJobs:  String(localized: "Tabelle über Detail, je volle Breite")
+        case .monitoring: String(localized: "GPU-/Quota-/Stunden-Karten groß, Jobs darunter")
         }
     }
 

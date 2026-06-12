@@ -327,7 +327,7 @@ struct GpuHoursSheetView: View {
 
     private func reload() async {
         guard let slurm = appState.slurm else {
-            error = "Keine SSH-Verbindung."
+            error = String(localized: "Keine SSH-Verbindung.")
             return
         }
         let (start, end) = currentRange
@@ -366,14 +366,15 @@ struct GpuHoursSheetView: View {
 enum RangePreset: String, CaseIterable, Identifiable {
     case last30Days, last90Days, last12Months, thisYear, lastYear, custom
     var id: String { rawValue }
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .last30Days:   "30 Tage"
-        case .last90Days:   "90 Tage"
-        case .last12Months: "12 Monate"
-        case .thisYear:     "Dieses Jahr"
-        case .lastYear:     "Letztes Jahr"
-        case .custom:       "Benutzerdefiniert…"
+        case .last30Days:   String(localized: "30 Tage")
+        case .last90Days:   String(localized: "90 Tage")
+        case .last12Months: String(localized: "12 Monate")
+        case .thisYear:     String(localized: "Dieses Jahr")
+        case .lastYear:     String(localized: "Letztes Jahr")
+        case .custom:       String(localized: "Benutzerdefiniert…")
         }
     }
 }

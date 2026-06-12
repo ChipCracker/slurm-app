@@ -15,9 +15,11 @@ enum ThemeSlot: String, CaseIterable, Codable, Identifiable {
 
     var id: String { rawValue }
 
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog
+    // (nur „Akzentfarbe" unterscheidet sich; die Status-Namen sind Slurm-Jargon).
     var label: String {
         switch self {
-        case .accent:          return "Akzentfarbe"
+        case .accent:          return String(localized: "Akzentfarbe")
         case .stateRunning:    return "Running"
         case .statePending:    return "Pending"
         case .stateCompleting: return "Completing"
@@ -207,7 +209,7 @@ enum ContrastGuard {
             worst = min(worst, ratio(color, on: Theme.background, dark: dark))
         }
         return worst < 3.0
-            ? "Niedriger Kontrast (\(String(format: "%.1f", worst)):1) – evtl. schwer lesbar."
+            ? String(localized: "Niedriger Kontrast (\(String(format: "%.1f", worst)):1) – evtl. schwer lesbar.")
             : nil
     }
 }

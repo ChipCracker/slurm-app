@@ -50,6 +50,21 @@ struct SlurmApp: App {
     private let defaultIndex = 3
 
     init() {
+        // Sprache: Deutsch ist der App-Default — auch auf englischen Systemen.
+        // Registrierter Default für alle UserDefaults-Leser; ein vom Nutzer in
+        // den Einstellungen gewählter (persistierter) AppleLanguages-Wert
+        // gewinnt dauerhaft, „Deutsch" entfernt ihn wieder.
+        UserDefaults.standard.register(defaults: ["AppleLanguages": ["de"]])
+        // CFBundle (String-Katalog-Auflösung) liest die Registration-Domain
+        // NICHT — ohne persistierten Wert würde ein englisches System trotzdem
+        // Englisch laden. Daher einmal pro Start säen, solange der Nutzer
+        // nichts anderes persistiert hat (Settings → Sprache räumt bei
+        // „Deutsch" auf, dieser Seed stellt den de-Default dann wieder her).
+        let persisted = Bundle.main.bundleIdentifier
+            .flatMap { UserDefaults.standard.persistentDomain(forName: $0) }?["AppleLanguages"]
+        if persisted == nil {
+            UserDefaults.standard.set(["de"], forKey: "AppleLanguages")
+        }
         // Load the InjectionIII bundle at launch so live hot reloading works in
         // Debug on macOS (no-op in Release / when InjectionIII isn't installed).
         #if DEBUG && os(macOS)

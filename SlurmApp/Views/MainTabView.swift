@@ -18,11 +18,12 @@ enum MainSection: String, CaseIterable, Identifiable, Hashable {
     case jobs, bookmarks, settings
 
     var id: String { rawValue }
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .jobs:       "Jobs"
-        case .bookmarks:  "Lesezeichen"
-        case .settings:   "Einstellungen"
+        case .jobs:       String(localized: "Jobs")
+        case .bookmarks:  String(localized: "Lesezeichen")
+        case .settings:   String(localized: "Einstellungen")
         }
     }
     var symbol: String {

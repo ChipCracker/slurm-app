@@ -45,6 +45,7 @@
 		8DD8C7A459EAA65C52718994 /* GlassModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070121E4A1964FD6B7250A8 /* GlassModal.swift */; };
 		902DA43E6CA1AC14CAAD5D2F /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1C661C0E5CE3169365AB1 /* MainTabView.swift */; };
 		920D72128BB5E6CC1DE1253A /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD6E446F42A28C1DB5396329 /* LiquidGlass.swift */; };
+		9250DB1553DA16ECB923FC01 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 1620C78B9FDAADC63809056E /* Localizable.xcstrings */; };
 		94A088F08D6FE2CBF399CAB8 /* scontrol_partition.txt in Resources */ = {isa = PBXBuildFile; fileRef = BDFCF123293635C496E75BDF /* scontrol_partition.txt */; };
 		9E1DB645653D057DC20E5DAE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29EB966D7A1276D0A26C8A45 /* Theme.swift */; };
 		9F95DDE08A4DE101CF6F7015 /* SSHClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0E09345FBAB5547D4BC59C /* SSHClient.swift */; };
@@ -88,6 +89,7 @@
 		1295F23A666B86D3C130E013 /* ThemeOverrides.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeOverrides.swift; sourceTree = "<group>"; };
 		12C29381737B77AFDE8DD5DB /* SlurmApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SlurmApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		141846DA189E2932E42F689F /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
+		1620C78B9FDAADC63809056E /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		27C7AE1DCC53EC7AE1EEF3E2 /* BatchActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchActions.swift; sourceTree = "<group>"; };
 		29EB966D7A1276D0A26C8A45 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		3022A5D1A8A21A70C4F87B37 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -278,6 +280,7 @@
 			isa = PBXGroup;
 			children = (
 				513A4EB5A7962023327A4191 /* Assets.xcassets */,
+				1620C78B9FDAADC63809056E /* Localizable.xcstrings */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -376,10 +379,11 @@
 				};
 			};
 			buildConfigurationList = 927857984B22A57D71969EE0 /* Build configuration list for PBXProject "SlurmApp" */;
-			developmentRegion = en;
+			developmentRegion = de;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
+				de,
 				en,
 			);
 			mainGroup = 2B63AE6AF1A3BF83EB1192F7;
@@ -418,6 +422,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5261D7F882B957556078B80F /* Assets.xcassets in Resources */,
+				9250DB1553DA16ECB923FC01 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

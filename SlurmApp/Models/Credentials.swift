@@ -5,10 +5,11 @@ enum AuthMethod: String, Codable, CaseIterable, Identifiable {
     case privateKey
 
     var id: String { rawValue }
+    // String-Property lokalisiert nicht automatisch → explizit über den Katalog.
     var label: String {
         switch self {
-        case .password:   return "Passwort"
-        case .privateKey: return "Privater Schlüssel"
+        case .password:   return String(localized: "Passwort")
+        case .privateKey: return String(localized: "Privater Schlüssel")
         }
     }
 }

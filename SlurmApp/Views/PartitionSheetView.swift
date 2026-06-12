@@ -175,11 +175,12 @@ struct PartitionSheetView: View {
             Divider().background(Theme.hairline)
             // Vokabular deckungsgleich mit der GPU-Legende (GpuComponents):
             // „meine" / „preemptierbar" / „belegt" / „frei".
+            // String-Parameter lokalisieren nicht automatisch → String(localized:).
             HStack(spacing: 18) {
-                metric("\(u.ownAllocated)", "meine", Theme.ownNonPreempt)
-                metric("\(u.preemptible)", "preemptierbar", Theme.ownPreempt)
-                metric("\(u.otherAllocated)", "belegt", Theme.otherNonPreempt)
-                metric("\(u.availableGpus)", "frei", Theme.textSecondary)
+                metric("\(u.ownAllocated)", String(localized: "meine"), Theme.ownNonPreempt)
+                metric("\(u.preemptible)", String(localized: "preemptierbar"), Theme.ownPreempt)
+                metric("\(u.otherAllocated)", String(localized: "belegt"), Theme.otherNonPreempt)
+                metric("\(u.availableGpus)", String(localized: "frei"), Theme.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -392,11 +393,11 @@ struct PartitionSheetView: View {
                     }
                 }
                 HStack(spacing: 14) {
-                    gpuBadge("\(used.count) belegt", Theme.otherNonPreempt)
+                    gpuBadge(String(localized: "\(used.count) belegt"), Theme.otherNonPreempt)
                     if !used.indices.isEmpty {
                         Text("IDX \(used.indices)").font(.caption2.monospaced()).foregroundStyle(.secondary)
                     }
-                    gpuBadge("\(free) frei", Theme.gpuFree)
+                    gpuBadge(String(localized: "\(free) frei"), Theme.gpuFree)
                 }
             } else {
                 Text("Keine GPUs auf diesem Knoten").font(.caption).foregroundStyle(.secondary)

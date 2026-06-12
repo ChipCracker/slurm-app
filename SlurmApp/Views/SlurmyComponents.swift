@@ -138,8 +138,10 @@ struct SlurmyLoadingView: View {
 
 /// Centered loader with an optional caption — drop-in for "connecting…" /
 /// "loading jobs…" states.
+/// `LocalizedStringKey` statt String: So lokalisieren die Literal-Aufrufer
+/// automatisch über den Katalog (String-Parameter täten das nicht).
 struct SlurmyLoadingState: View {
-    var caption: String? = nil
+    var caption: LocalizedStringKey? = nil
     var body: some View {
         VStack(spacing: 16) {
             SlurmyLoadingView(nodeSize: 18, count: 6)
@@ -154,12 +156,14 @@ struct SlurmyLoadingState: View {
 }
 
 /// Friendly empty / disconnected state featuring the Slurmy mascot.
+/// `LocalizedStringKey` statt String: So lokalisieren die Literal-Aufrufer
+/// automatisch über den Katalog (String-Parameter täten das nicht).
 struct SlurmyEmptyState: View {
-    let title: String
-    var message: String? = nil
+    let title: LocalizedStringKey
+    var message: LocalizedStringKey? = nil
     var mascotWidth: CGFloat = 200
     /// Optional call-to-action.
-    var actionTitle: String? = nil
+    var actionTitle: LocalizedStringKey? = nil
     var action: (() -> Void)? = nil
 
     var body: some View {
