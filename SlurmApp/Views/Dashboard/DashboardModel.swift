@@ -6,9 +6,10 @@ import SwiftUI
 enum DashboardWidget: String, Codable, CaseIterable, Identifiable {
     case jobs            // Job-Tabelle + Filterleiste
     case detail          // Detail / Logs / GPU-Stats des gewählten Jobs
-    case gpuAllocation   // GPU-Belegung pro Partition
-    case diskQuotas      // Speicher-Quota-Karten
-    case gpuHours        // GPU-Stunden-Ranking
+    case cluster         // Kombinierte Cluster-Spalte (Belegung + Quotas + Stunden)
+    case gpuAllocation   // GPU-Belegung pro Partition (einzeln)
+    case diskQuotas      // Speicher-Quota-Karten (einzeln)
+    case gpuHours        // GPU-Stunden-Ranking (einzeln)
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum DashboardWidget: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .jobs:          "Jobs"
         case .detail:         "Job-Detail"
+        case .cluster:        "Cluster-Info"
         case .gpuAllocation:  "GPU-Belegung"
         case .diskQuotas:     "Speicher-Quota"
         case .gpuHours:       "GPU-Stunden"
@@ -26,6 +28,7 @@ enum DashboardWidget: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .jobs:          "list.bullet.rectangle.portrait"
         case .detail:         "doc.text.magnifyingglass"
+        case .cluster:        "server.rack"
         case .gpuAllocation:  "rectangle.split.3x1"
         case .diskQuotas:     "internaldrive"
         case .gpuHours:        "clock.arrow.circlepath"
@@ -37,6 +40,7 @@ enum DashboardWidget: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .jobs:    (2, 2)
         case .detail:  (2, 2)
+        case .cluster: (1, 3)
         default:       (1, 1)
         }
     }
@@ -121,11 +125,11 @@ enum DashboardPreset: String, CaseIterable, Identifiable {
         switch self {
         case .classic:
             DashboardLayout(columns: 6, placements: [
-                .init(widget: .jobs,          frame: .init(x: 0, y: 0, w: 4, h: 3)),
-                .init(widget: .detail,        frame: .init(x: 0, y: 3, w: 4, h: 3)),
-                .init(widget: .gpuAllocation, frame: .init(x: 4, y: 0, w: 2, h: 2)),
-                .init(widget: .diskQuotas,    frame: .init(x: 4, y: 2, w: 2, h: 2)),
-                .init(widget: .gpuHours,      frame: .init(x: 4, y: 4, w: 2, h: 2)),
+                .init(widget: .jobs,    frame: .init(x: 0, y: 0, w: 4, h: 3)),
+                .init(widget: .detail,  frame: .init(x: 0, y: 3, w: 4, h: 3)),
+                // Kombinierte Spalte: GPU-Belegung huggt ihre Höhe,
+                // Quotas + Stunden teilen sich den Rest (s. JobsView).
+                .init(widget: .cluster, frame: .init(x: 4, y: 0, w: 2, h: 6)),
             ])
         case .twoColumn:
             DashboardLayout(columns: 6, placements: [

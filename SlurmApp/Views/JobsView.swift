@@ -946,17 +946,12 @@ struct JobsView: View {
             }
         } right: {
             // Inspector-Spalte: KEIN äußerer ScrollView. Die drei Regionen
-            // füllen zusammen exakt die Spaltenhöhe (ResizableVSplit3); lange
-            // Inhalte (viele Partitionen, GPU-Hours-Rangliste) scrollen
-            // INNERHALB ihrer Region — die Trenner sind ziehbar/persistiert.
-            ResizableVSplit3 {
-                gpuAllocationCardView
-            } b: {
-                diskQuotasCardView
-            } c: {
-                gpuHoursCardView
-            }
-            .slurmyContentBackground()
+            // füllen zusammen exakt die Spaltenhöhe: GPU-Belegung bekommt
+            // ihre natürliche Höhe (alles sichtbar), Disk-Quotas und
+            // GPU-Stunden teilen sich den Rest (s. clusterInfoColumn).
+            clusterInfoColumn
+                .padding(10)
+                .slurmyContentBackground()
             .focusable()
             .focusEffectDisabled()
             .focused($focusedPane, equals: .inspector)
@@ -999,6 +994,9 @@ struct JobsView: View {
             detailPane
                 .background(Theme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        case .cluster:
+            clusterInfoColumn
+                .padding(12)
         case .gpuAllocation:
             clusterCard {
                 GpuAllocationStrip(
@@ -2060,6 +2058,39 @@ struct JobsView: View {
                     gpuHoursCardView
                 }
                 .padding(12)
+            }
+        }
+    }
+
+    /// Gemessene natürliche Höhe der GPU-Belegungs-Karte (s. clusterInfoColumn).
+    @State private var gpuCardNaturalH: CGFloat = 320
+
+    /// Kombinierte Cluster-Spalte (klassischer Inspector UND .cluster-Widget):
+    /// Die GPU-Belegung bekommt ihre NATÜRLICHE Höhe, damit alle Partitionen
+    /// sichtbar sind (Deckel: 60 % der Spalte als Schutz vor Riesen-Clustern,
+    /// dann scrollt sie intern); Disk-Quotas und GPU-Stunden teilen sich den
+    /// restlichen Platz gleichmäßig und scrollen jeweils in sich.
+    private var clusterInfoColumn: some View {
+        GeometryReader { geo in
+            VStack(spacing: 12) {
+                ScrollView {
+                    gpuAllocationCardView
+                        .frame(maxWidth: .infinity)
+                        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) {
+                            gpuCardNaturalH = $0
+                        }
+                }
+                .frame(maxHeight: min(gpuCardNaturalH, geo.size.height * 0.6))
+                ScrollView {
+                    diskQuotasCardView
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollView {
+                    gpuHoursCardView
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }

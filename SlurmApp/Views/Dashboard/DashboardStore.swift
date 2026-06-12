@@ -18,11 +18,36 @@ final class DashboardStore: ObservableObject {
         if let data = defaults.data(forKey: Self.layoutKey),
            let decoded = try? JSONDecoder().decode(DashboardLayout.self, from: data),
            !decoded.placements.isEmpty {
-            layout = decoded
+            layout = Self.mergingClusterColumn(decoded)
         } else {
             layout = DashboardPreset.classic.layout
         }
         presetName = defaults.string(forKey: Self.presetKey) ?? DashboardPreset.classic.label
+    }
+
+    /// Migration: Die frühere Dreier-Spalte (GPU-Belegung / Quotas / Stunden,
+    /// gestapelt mit gleicher x-Position und Breite) wird zum kombinierten
+    /// `.cluster`-Widget zusammengelegt — die Platzlogik (Belegung natürlich
+    /// hoch, Rest geteilt) lebt jetzt IM Widget. Horizontale Anordnungen
+    /// (Monitoring-Preset) bleiben unangetastet.
+    private static func mergingClusterColumn(_ layout: DashboardLayout) -> DashboardLayout {
+        guard layout.placement(for: .cluster) == nil else { return layout }
+        let parts: [DashboardWidget] = [.gpuAllocation, .diskQuotas, .gpuHours]
+        let found = layout.placements.filter { parts.contains($0.widget) }
+        guard found.count >= 2,
+              let first = found.first,
+              found.allSatisfy({ $0.frame.x == first.frame.x && $0.frame.w == first.frame.w })
+        else { return layout }
+
+        var result = layout
+        result.placements.removeAll { parts.contains($0.widget) }
+        let minY = found.map(\.frame.y).min() ?? 0
+        let maxY = found.map { $0.frame.y + $0.frame.h }.max() ?? 3
+        result.placements.append(.init(
+            widget: .cluster,
+            frame: .init(x: first.frame.x, y: minY, w: first.frame.w, h: maxY - minY)
+        ))
+        return result
     }
 
     // MARK: – Presets
